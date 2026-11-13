@@ -9,15 +9,15 @@ using ClubControl.Shared;
 namespace ClubControl.Server.Tests;
 
 /// <summary>
-/// Renders a real grouped ListBox like the main panel's and checks that a card on screen shows the new
+/// Renders a real sorted ListBox like the main panel's and checks that a card on screen shows the new
 /// values after <see cref="PcRow.CopyFrom"/> - the panel no longer rebuilds its cards every second.
 /// </summary>
 public class PcRowBindingTests
 {
     private static PcRow Row(string remaining, int id = 1, int number = 1) => new()
     {
-        Id = id, MachineGuid = Guid.NewGuid(), IsOnline = true, Enabled = true, IsManual = false, Kind = ResourceKind.Computer,
-        Number = number, TariffId = 1, State = PcState.PrepaySession, KindIcon = "", TariffDisplay = "", StateDisplay = "",
+        Id = id, MachineGuid = Guid.NewGuid(), IsOnline = true, Enabled = true, IsManual = false,
+        Number = number, TariffId = 1, State = PcState.PrepaySession, TariffDisplay = "", StateDisplay = "",
         SessionTypeDisplay = "", AmountDisplay = "", StartDisplay = "", EndDisplay = "", RemainingDisplay = remaining,
     };
 
@@ -48,7 +48,7 @@ public class PcRowBindingTests
     }
 
     [Fact]
-    public void A_card_in_a_grouped_sorted_list_shows_new_values_after_CopyFrom()
+    public void A_card_in_a_sorted_list_shows_new_values_after_CopyFrom()
     {
         RunOnStaThread(() =>
         {
@@ -57,8 +57,6 @@ public class PcRowBindingTests
 
             // The same view the main panel builds (MainWindow.BuildCardView).
             var view = new ListCollectionView(new List<PcRow> { first, second });
-            view.GroupDescriptions.Add(new PropertyGroupDescription(nameof(PcRow.IsOther)));
-            view.SortDescriptions.Add(new SortDescription(nameof(PcRow.IsOther), ListSortDirection.Ascending));
             view.SortDescriptions.Add(new SortDescription(nameof(PcRow.Number), ListSortDirection.Ascending));
 
             var list = new ListBox
@@ -67,7 +65,6 @@ public class PcRowBindingTests
                 ItemTemplate = (DataTemplate)XamlReader.Parse(
                     "<DataTemplate xmlns='http://schemas.microsoft.com/winfx/2006/xaml/presentation'><TextBlock Text='{Binding PrimaryDisplay}' /></DataTemplate>"),
             };
-            list.GroupStyle.Add(new GroupStyle());
             // Shown for real (off screen), as in the app, so the template is applied and the cards are generated.
             var window = new Window { Content = list, Left = -10000, Top = -10000, Width = 400, Height = 400, ShowInTaskbar = false, ShowActivated = false, WindowStyle = WindowStyle.None };
             window.Show();

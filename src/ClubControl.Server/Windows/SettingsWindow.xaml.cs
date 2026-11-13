@@ -1,0 +1,287 @@
+using System;
+using System.Collections.Generic;
+using System.Collections.ObjectModel;
+using System.Linq;
+using System.Threading.Tasks;
+using System.Windows;
+using ClubControl.Server.Data;
+using ClubControl.Server.Data.Models;
+using ClubControl.Server.Resources;
+using ClubControl.Server.Services;
+using ClubControl.Shared;
+using ClubControl.Shared.Security;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
+
+namespace ClubControl.Server.Windows;
+
+/// <summary>Settings: General, Tariffs, Computers. One DbContext for the whole window, saved on "Save".</summary>
+public partial class SettingsWindow : Window
+{
+    private readonly IServiceProvider _services;
+    private readonly IServiceScope _scope;
+    private readonly ClubDbContext _db;
+
+    private Setting _setting = null!;
+    private ObservableCollection<Tariff> _tariffs = null!;
+    private List<Pc> _pcs = null!;
+    private Dictionary<int, int?> _openedWithNumbers = null!;
+    private AdminPanelLanguage _openedWithLanguage;
+
+    private record ComboOption<T>(string Display, T Value);
+
+    public SettingsWindow(IServiceProvider services)
+    {
+        InitializeComponent();
+        _services = services;
+        _scope = services.CreateScope();
+        _db = _scope.ServiceProvider.GetRequiredService<ClubDbContext>();
+
+        ApplyLocalization();
+
+        Loaded += async (_, _) => await LoadAsync();
+        Closed += (_, _) => _scope.Dispose();
+    }
+
+    private void ApplyLocalization()
+    {
+        Title = Strings.Get("SettingsTitle");
+        CancelButton.Content = Strings.Get("Cancel");
+        SaveButton.Content = Strings.Get("Save");
+
+        GeneralTab.Header = Strings.Get("TabGeneral");
+        TariffsTab.Header = Strings.Get("TabTariffs");
+        ComputersTab.Header = Strings.Get("TabResources");
+
+        ClubNameLabel.Text = Strings.Get("LabelClubName");
+        LockScreenTextLabel.Text = Strings.Get("LabelLockScreenText");
+        LockScreenLanguageLabel.Text = Strings.Get("LabelLockScreenLanguage");
+        AdminPanelLanguageLabel.Text = Strings.Get("LabelAdminPanelLanguage");
+        WarningMinutesLabel.Text = Strings.Get("LabelWarningMinutes");
+        AfterSessionActionLabel.Text = Strings.Get("LabelAfterSessionAction");
+        ProcessListLabel.Text = Strings.Get("LabelProcessList");
+        UnlockPasswordLabel.Text = Strings.Get("LabelUnlockPassword");
+        AutoShutdownLabel.Text = Strings.Get("LabelAutoShutdown");
+        ShiftAutoCloseLabel.Text = Strings.Get("LabelShiftAutoClose");
+
+        AddTariffButton.Content = Strings.Get("ButtonAdd");
+        DeleteTariffButton.Content = "🗑 " + Strings.Get("ButtonDelete");
+        TariffNameColumn.Header = Strings.Get("LabelName");
+        TariffPriceColumn.Header = Strings.Get("LabelPricePerHour");
+        TariffMinColumn.Header = Strings.Get("LabelMinPayment");
+        TariffMaxColumn.Header = Strings.Get("LabelMaxPayment");
+
+        ComputersHintText.Text = Strings.Get("ComputersHint");
+        AddComputerButton.Content = "🖥 " + Strings.Get("AddComputerTitle");
+        DeleteResourceButton.Content = "🗑 " + Strings.Get("ButtonDelete");
+        PcNumberColumn.Header = Strings.Get("ColumnPcNumber");
+        TariffColumn.Header = Strings.Get("ColumnTariff");
+        EnabledColumn.Header = Strings.Get("ColumnEnabled");
+        HostnameColumn.Header = Strings.Get("ColumnHostname");
+        IpColumn.Header = Strings.Get("ColumnIp");
+        MacColumn.Header = Strings.Get("ColumnMac");
+        OnlineColumn.Header = Strings.Get("ColumnOnline");
+    }
+
+    private async Task LoadAsync()
+    {
+        _setting = await SettingsHelper.GetOrCreateAsync(_db);
+        _tariffs = new ObservableCollection<Tariff>(await TariffsHelper.GetAllAsync(_db));
+        _pcs = await _db.Pcs.OrderBy(p => p.Number).ToListAsync();
+        _openedWithNumbers = _pcs.ToDictionary(p => p.Id, p => p.Number);
+        _openedWithLanguage = _setting.AdminPanelLanguage;
+
+        ClubNameBox.Text = _setting.ClubName;
+        LockScreenTextBox.Text = _setting.LockScreenText;
+
+        LockScreenLanguageCombo.ItemsSource = Enum.GetValues<LockScreenLanguage>()
+            .Select(l => new ComboOption<LockScreenLanguage>(Strings.LockScreenLanguageName(l), l))
+            .ToList();
+        LockScreenLanguageCombo.SelectedItem = ((List<ComboOption<LockScreenLanguage>>)LockScreenLanguageCombo.ItemsSource)
+            .First(o => o.Value == _setting.LockScreenLanguage);
+
+        AdminPanelLanguageCombo.ItemsSource = Enum.GetValues<AdminPanelLanguage>()
+            .Select(l => new ComboOption<AdminPanelLanguage>(Strings.AdminPanelLanguageName(l), l))
+            .ToList();
+        AdminPanelLanguageCombo.SelectedItem = ((List<ComboOption<AdminPanelLanguage>>)AdminPanelLanguageCombo.ItemsSource)
+            .First(o => o.Value == _setting.AdminPanelLanguage);
+
+        WarningMinutes1Box.Text = _setting.WarningMinutes1.ToString();
+        WarningMinutes2Box.Text = _setting.WarningMinutes2.ToString();
+
+        AfterSessionActionCombo.ItemsSource = Enum.GetValues<AfterSessionAction>()
+            .Select(a => new ComboOption<AfterSessionAction>(Strings.AfterSessionActionName(a), a))
+            .ToList();
+        AfterSessionActionCombo.SelectedItem = ((List<ComboOption<AfterSessionAction>>)AfterSessionActionCombo.ItemsSource)
+            .First(o => o.Value == _setting.AfterSessionAction);
+
+        ProcessListBox.Text = _setting.ProcessListCsv;
+        AutoShutdownBox.Text = _setting.AutoShutdownAfterMinutes.ToString();
+        ShiftAutoCloseBox.Text = _setting.ShiftAutoCloseHours.ToString();
+
+        TariffGrid.ItemsSource = _tariffs;
+        TariffColumn.ItemsSource = _tariffs;
+        PcGrid.ItemsSource = _pcs;
+    }
+
+    private void OnAddTariff(object sender, RoutedEventArgs e)
+    {
+        var tariff = new Tariff { Name = Strings.Get("NewTariffDefaultName") };
+        _db.Tariffs.Add(tariff);
+        _tariffs.Add(tariff);
+    }
+
+    private void OnDeleteTariff(object sender, RoutedEventArgs e)
+    {
+        if (TariffGrid.SelectedItem is not Tariff tariff)
+        {
+            MessageBox.Show(Strings.Get("SelectATariffToDelete"), Strings.Get("ConfirmTitle"),
+                MessageBoxButton.OK, MessageBoxImage.Information);
+            return;
+        }
+
+        // A PC currently assigned to this tariff (including an edit made earlier in this
+        // same dialog, before Save) would be left pointing at a tariff that no longer exists -
+        // block that and point the admin at reassigning it first, same as OnDeleteResource does
+        // for session history.
+        if (_pcs.Any(p => p.TariffId == tariff.Id))
+        {
+            MessageBox.Show(Strings.Get("CannotDeleteTariffInUse"), Strings.Get("ConfirmTitle"),
+                MessageBoxButton.OK, MessageBoxImage.Warning);
+            return;
+        }
+
+        if (MessageBox.Show(Strings.Get("DeleteTariffConfirm"), Strings.Get("ConfirmTitle"),
+                MessageBoxButton.YesNo, MessageBoxImage.Warning) != MessageBoxResult.Yes)
+            return;
+
+        _db.Tariffs.Remove(tariff);
+        _tariffs.Remove(tariff);
+    }
+
+    private async void OnAddComputer(object sender, RoutedEventArgs e)
+    {
+        // AddOfflinePcWindow saves immediately through its own scope - just re-query so the new row shows up in this grid too.
+        var window = new AddOfflinePcWindow(_services) { Owner = this };
+        if (window.ShowDialog() == true)
+        {
+            _pcs = await _db.Pcs.OrderBy(p => p.Number).ToListAsync();
+            PcGrid.ItemsSource = _pcs;
+        }
+    }
+
+    private async void OnDeleteResource(object sender, RoutedEventArgs e)
+    {
+        if (PcGrid.SelectedItem is not Pc pc)
+        {
+            MessageBox.Show(Strings.Get("SelectAResourceToDelete"), Strings.Get("ConfirmTitle"),
+                MessageBoxButton.OK, MessageBoxImage.Information);
+            return;
+        }
+
+        // Deleting a PC/resource with any billing history would cascade-delete its Sessions and
+        // SessionSegments too (required FK), silently erasing past reports - block that and point
+        // the admin at "Enabled" instead, which hides it without touching history.
+        if (await _db.Sessions.AnyAsync(s => s.PcId == pc.Id))
+        {
+            MessageBox.Show(Strings.Get("CannotDeleteResourceWithHistory"), Strings.Get("ConfirmTitle"),
+                MessageBoxButton.OK, MessageBoxImage.Warning);
+            return;
+        }
+
+        if (MessageBox.Show(Strings.Get("DeleteResourceConfirm"), Strings.Get("ConfirmTitle"),
+                MessageBoxButton.YesNo, MessageBoxImage.Warning) != MessageBoxResult.Yes)
+            return;
+
+        _db.Pcs.Remove(pc);
+        await _db.SaveChangesAsync();
+
+        _pcs = await _db.Pcs.OrderBy(p => p.Number).ToListAsync();
+        PcGrid.ItemsSource = _pcs;
+    }
+
+    private async void OnSave(object sender, RoutedEventArgs e)
+    {
+        var numbers = _pcs.Where(p => p.Number.HasValue).Select(p => p.Number!.Value).ToList();
+        if (numbers.Count != numbers.Distinct().Count())
+        {
+            ErrorText.Text = Strings.Get("PcNumbersMustBeUnique");
+            return;
+        }
+
+        var names = _tariffs.Select(t => t.Name.Trim()).ToList();
+        if (names.Any(string.IsNullOrWhiteSpace) || names.Count != names.Distinct(StringComparer.OrdinalIgnoreCase).Count())
+        {
+            ErrorText.Text = Strings.Get("TariffNamesMustBeUniqueAndNotEmpty");
+            return;
+        }
+
+        // Catch a misconfigured tariff here, at save time, rather than letting it reach
+        // SessionService later - a price of 0 (the default for a freshly added tariff nobody has
+        // edited yet) would otherwise let a prepay session be created that charges full money for
+        // zero minutes (see BillingCalculator.IsValidTariff).
+        if (_tariffs.Any(t => !BillingCalculator.IsValidTariff(t.PricePerHourUzs, t.MinPaymentUzs, t.MaxPaymentUzs)))
+        {
+            ErrorText.Text = Strings.Get("TariffPriceAndLimitsMustBeValid");
+            return;
+        }
+
+        // A PC whose number was just cleared is being unassigned/repurposed - its auth token (if
+        // any) no longer vouches for whatever ends up at that MachineGuid next, so require
+        // re-provisioning (see ClubHub.Heartbeat) rather than letting a stale token keep trusting
+        // it under a new identity.
+        foreach (var pc in _pcs)
+        {
+            if (_openedWithNumbers.TryGetValue(pc.Id, out var originalNumber) && originalNumber.HasValue && !pc.Number.HasValue)
+                pc.AuthTokenHash = null;
+        }
+
+        _setting.ClubName = ClubNameBox.Text;
+        _setting.LockScreenText = LockScreenTextBox.Text;
+        _setting.LockScreenLanguage = ((ComboOption<LockScreenLanguage>)LockScreenLanguageCombo.SelectedItem!).Value;
+        _setting.AdminPanelLanguage = ((ComboOption<AdminPanelLanguage>)AdminPanelLanguageCombo.SelectedItem!).Value;
+        _setting.WarningMinutes1 = ParseInt(WarningMinutes1Box.Text, _setting.WarningMinutes1);
+        _setting.WarningMinutes2 = ParseInt(WarningMinutes2Box.Text, _setting.WarningMinutes2);
+        _setting.AfterSessionAction = ((ComboOption<AfterSessionAction>)AfterSessionActionCombo.SelectedItem!).Value;
+        _setting.ProcessListCsv = ProcessListBox.Text;
+
+        // Empty box = keep the current unlock password; typing one replaces it.
+        if (!string.IsNullOrWhiteSpace(UnlockPasswordBox.Password))
+            _setting.ClientUnlockPasswordHash = PasswordHasher.Hash(UnlockPasswordBox.Password);
+
+        _setting.AutoShutdownAfterMinutes = ParseInt(AutoShutdownBox.Text, _setting.AutoShutdownAfterMinutes);
+
+        // 0 or a negative number would close every shift at once; keep the old value then.
+        var shiftHours = ParseInt(ShiftAutoCloseBox.Text, _setting.ShiftAutoCloseHours);
+        _setting.ShiftAutoCloseHours = shiftHours is >= 1 and <= 72 ? shiftHours : _setting.ShiftAutoCloseHours;
+
+        foreach (var tariff in _tariffs)
+            tariff.Name = tariff.Name.Trim();
+
+        await _db.SaveChangesAsync();
+
+        var sessionService = _scope.ServiceProvider.GetRequiredService<SessionService>();
+        await sessionService.BroadcastSettingsAsync();
+
+        // Provision any PC that is now configured but has no auth token yet - this is the only
+        // place a token is ever minted (see SessionService.ProvisionPcIfNeededAsync for why it is
+        // tied to this exact Save action rather than to the PC's next heartbeat). No-ops for a PC
+        // that is not currently connected; opening Settings and saving again once it is online
+        // provisions it then.
+        foreach (var pc in _pcs)
+            await sessionService.ProvisionPcIfNeededAsync(pc);
+
+        if (_setting.AdminPanelLanguage != _openedWithLanguage)
+        {
+            Strings.Apply(_setting.AdminPanelLanguage);
+            MessageBox.Show(Strings.Get("LanguageChangedNotice"), Strings.Get("ConfirmTitle"),
+                MessageBoxButton.OK, MessageBoxImage.Information);
+        }
+
+        DialogResult = true;
+    }
+
+    private static int ParseInt(string text, int fallback) => int.TryParse(text, out var value) ? value : fallback;
+
+    private void OnCancel(object sender, RoutedEventArgs e) => DialogResult = false;
+}

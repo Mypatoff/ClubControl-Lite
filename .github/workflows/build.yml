@@ -1,0 +1,95 @@
+name: Build
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up .NET 8
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
+
+      - name: Restore
+        run: dotnet restore ClubControl.sln
+
+      - name: Run tests
+        run: dotnet test src/ClubControl.Tests/ClubControl.Tests.csproj -c Release --no-restore
+
+      - name: Run session tests (server, Windows only)
+        run: dotnet test src/ClubControl.Server.Tests/ClubControl.Server.Tests.csproj -c Release --no-restore
+
+      # Self-contained: the PCs need no separate .NET install.
+      - name: Publish server
+        run: dotnet publish src/ClubControl.Server/ClubControl.Server.csproj -c Release -r win-x64 --self-contained true -o publish/server
+
+      - name: Publish client
+        run: dotnet publish src/ClubControl.Client/ClubControl.Client.csproj -c Release -r win-x64 --self-contained true -o publish/client
+
+      - name: Install Inno Setup
+        run: choco install innosetup -y --no-progress
+
+      - name: Read the version
+        id: version
+        shell: pwsh
+        run: |
+          $v = ([xml](Get-Content Directory.Build.props)).Project.PropertyGroup.Version
+          "value=$v" >> $env:GITHUB_OUTPUT
+
+      - name: Build the installer (ClubControlLite-Setup.exe)
+        run: '& "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" "/DAppVersion=${{ steps.version.outputs.value }}" installer\ClubControl.iss'
+
+      - name: Upload installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: ClubControlLite-Setup
+          path: dist/ClubControlLite-Setup.exe
+
+      - name: Copy install scripts
+        run: |
+          Copy-Item scripts/install-server.ps1, scripts/install-server.bat publish/server/
+          Copy-Item scripts/install-client.ps1, scripts/install-client.bat publish/client/
+
+      - name: Upload server build
+        uses: actions/upload-artifact@v4
+        with:
+          name: ClubControlLite-Server
+          path: publish/server
+
+      - name: Upload client build
+        uses: actions/upload-artifact@v4
+        with:
+          name: ClubControlLite-Client
+          path: publish/client
+
+      # Keeps one rolling "latest" release with the newest installer attached, so there is
+      # always a stable download link in the repo instead of having to dig through Actions runs.
+      - name: Publish "latest" release
+        if: github.ref_type == 'branch' && github.event_name == 'push'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: latest
+          name: Latest build
+          body: Automatically built from the latest commit on main (${{ github.sha }}). Not a stability guarantee - just the newest build.
+          prerelease: true
+          files: dist/ClubControlLite-Setup.exe
+
+      # A pushed tag like v1.0.0 gets its own permanent release (the "latest" one above keeps moving).
+      - name: Publish the versioned release
+        if: github.ref_type == 'tag'
+        uses: softprops/action-gh-release@v2
+        with:
+          name: ClubControl Lite ${{ github.ref_name }}
+          generate_release_notes: true
+          files: dist/ClubControlLite-Setup.exe

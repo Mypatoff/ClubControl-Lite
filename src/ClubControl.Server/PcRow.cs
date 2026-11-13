@@ -1,0 +1,157 @@
+using System;
+using System.ComponentModel;
+using System.Linq;
+using System.Windows;
+using System.Windows.Media;
+using ClubControl.Server.Resources;
+using ClubControl.Server.Services;
+using ClubControl.Shared;
+
+namespace ClubControl.Server;
+
+/// <summary>
+/// One row of the main table (SPEC section 7). Built on every refresh tick from the
+/// database plus <see cref="Services.SessionService.ActiveSessionSnapshot"/> - never bound live to
+/// an EF entity, so the UI thread never touches a DbContext from another scope. The card already on
+/// screen takes over the new values (<see cref="CopyFrom"/>) instead of being replaced by a new one,
+/// so a refresh does not rebuild all the cards every second.
+/// </summary>
+public class PcRow : INotifyPropertyChanged
+{
+    public event PropertyChangedEventHandler? PropertyChanged;
+
+    /// <summary>
+    /// Takes over the values of a freshly built row for the same PC and, only if something really changed,
+    /// tells the card to redraw. Written out field by field on purpose (no reflection: this runs for every card
+    /// every second); <c>PcRowTests</c> checks by reflection that no stored property is forgotten here.
+    /// </summary>
+    public void CopyFrom(PcRow fresh)
+    {
+        // The two values a running session changes every second: only what shows them needs to redraw.
+        var timeChanged = false;
+        if (RemainingDisplay != fresh.RemainingDisplay) { RemainingDisplay = fresh.RemainingDisplay; timeChanged = true; }
+        if (AmountDisplay != fresh.AmountDisplay) { AmountDisplay = fresh.AmountDisplay; timeChanged = true; }
+
+        // Everything else changes rarely (state, online, note...), and then the whole card (colour, text, tooltip) is refreshed.
+        var otherChanged = false;
+        if (Id != fresh.Id) { Id = fresh.Id; otherChanged = true; }
+        if (MachineGuid != fresh.MachineGuid) { MachineGuid = fresh.MachineGuid; otherChanged = true; }
+        if (IsOnline != fresh.IsOnline) { IsOnline = fresh.IsOnline; otherChanged = true; }
+        if (Enabled != fresh.Enabled) { Enabled = fresh.Enabled; otherChanged = true; }
+        if (IsManual != fresh.IsManual) { IsManual = fresh.IsManual; otherChanged = true; }
+        if (Number != fresh.Number) { Number = fresh.Number; otherChanged = true; }
+        if (TariffId != fresh.TariffId) { TariffId = fresh.TariffId; otherChanged = true; }
+        if (State != fresh.State) { State = fresh.State; otherChanged = true; }
+        if (TariffDisplay != fresh.TariffDisplay) { TariffDisplay = fresh.TariffDisplay; otherChanged = true; }
+        if (StateDisplay != fresh.StateDisplay) { StateDisplay = fresh.StateDisplay; otherChanged = true; }
+        if (SessionTypeDisplay != fresh.SessionTypeDisplay) { SessionTypeDisplay = fresh.SessionTypeDisplay; otherChanged = true; }
+        if (StartDisplay != fresh.StartDisplay) { StartDisplay = fresh.StartDisplay; otherChanged = true; }
+        if (EndDisplay != fresh.EndDisplay) { EndDisplay = fresh.EndDisplay; otherChanged = true; }
+        if (ClientVersion != fresh.ClientVersion) { ClientVersion = fresh.ClientVersion; otherChanged = true; }
+        if (AuthRejected != fresh.AuthRejected) { AuthRejected = fresh.AuthRejected; otherChanged = true; }
+        if (ClientMissing != fresh.ClientMissing) { ClientMissing = fresh.ClientMissing; otherChanged = true; }
+        if (Note != fresh.Note) { Note = fresh.Note; otherChanged = true; }
+
+        if (otherChanged)
+        {
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(string.Empty));
+        }
+        else if (timeChanged)
+        {
+            // The big line on the card shows the remaining time (prepay) or the cost, and the tooltip lists the amount.
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(PrimaryDisplay)));
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(TooltipText)));
+        }
+    }
+
+    public required int Id { get; set; }
+    public required Guid MachineGuid { get; set; }
+    public required bool IsOnline { get; set; }
+    public required bool Enabled { get; set; }
+    public required bool IsManual { get; set; }
+    public required int? Number { get; set; }
+    public required int? TariffId { get; set; }
+    public required PcState State { get; set; }
+
+    public required string TariffDisplay { get; set; }
+    public required string StateDisplay { get; set; }
+    public required string SessionTypeDisplay { get; set; }
+    public required string AmountDisplay { get; set; }
+    public required string StartDisplay { get; set; }
+    public required string EndDisplay { get; set; }
+    public required string RemainingDisplay { get; set; }
+
+    /// <summary>Client build this PC last reported ("1.0.0+f4545fa"); empty if unknown. Lets the admin see which build each PC runs.</summary>
+    public string ClientVersion { get; set; } = "";
+
+    /// <summary>The client on this PC keeps connecting but the server rejects its token (see <see cref="Services.AuthRejectionTracker"/>).</summary>
+    public bool AuthRejected { get; set; }
+
+    public bool IsAuthRejected => IsOffline && AuthRejected;
+
+    /// <summary>The server found this PC switched on although its client is not connected (see <see cref="Services.ClientMissingTracker"/>).</summary>
+    public bool ClientMissing { get; set; }
+
+    /// <summary>A networked PC that is on but whose client was deleted, uninstalled or closed: not the same as switched off.</summary>
+    public bool IsClientMissing => IsOffline && ClientMissing;
+
+    /// <summary>The state text on the card: "Auth failed" or "No client" when that is the problem, otherwise the normal state.</summary>
+    public string CardStateDisplay => IsAuthRejected ? Strings.Get("AuthRejectedCard")
+        : IsClientMissing ? Strings.Get("ClientMissingCard")
+        : StateDisplay;
+
+    /// <summary>The optional note typed when the current session was started; empty if none.</summary>
+    public string Note { get; set; } = "";
+
+    /// <summary>A manual resource (an offline PC) never connects, so there is nothing to shut down/restart/wake.</summary>
+    public bool SupportsPowerControl => !IsManual;
+
+    public bool HasActiveSession => State is PcState.PrepaySession or PcState.PostpaySession or PcState.LimitReached;
+
+    private static Brush Resource(string key) =>
+        Application.Current.TryFindResource(key) as Brush ?? Brushes.Transparent;
+
+    /// <summary>A networked PC that is switched off / disconnected: its card is red.</summary>
+    public bool IsOffline => !IsManual && !IsOnline;
+
+    public string NumberDisplay => Number?.ToString() ?? "–";
+
+    /// <summary>What the admin calls this PC: "PC #5".</summary>
+    public string Label => Strings.PcLabel(Number);
+
+    public string CardTitle => NumberDisplay;
+
+    /// <summary>The big line on the card: time left for prepay, running cost for postpay / limit reached.</summary>
+    public string PrimaryDisplay => RemainingDisplay != "" ? RemainingDisplay : AmountDisplay;
+
+    /// <summary>Everything the compact card leaves out (tariff, amount, start/end), shown on hover.</summary>
+    public string TooltipText => string.Join("\n", new[]
+    {
+        IsAuthRejected ? Strings.Get("AuthRejectedTooltip") : "",
+        IsClientMissing ? Strings.Get("ClientMissingTooltip") : "",
+        StateDisplay, // the card is narrow, so a long state name ("Лимит достигнут") can be cut off there
+        TariffDisplay,
+        AmountDisplay,
+        StartDisplay != "" ? StartDisplay + (EndDisplay != "" ? " – " + EndDisplay : "") : "",
+        Note,
+        ClientVersion != "" ? "v" + ClientVersion : ""
+    }.Where(line => line != ""));
+
+    /// <summary>Opened by staff with the unlock password and not billing: shown as "Repair".</summary>
+    public bool IsRepair => State == PcState.ManualUnlocked;
+
+    /// <summary>Card accent colour (SPEC 7): pink = PC on but client missing, red = offline (overrides everything else for networked PCs; manual resources are never "offline"), green = session running, blue = free, purple = repair.</summary>
+    public Brush AccentBrush => IsClientMissing || IsAuthRejected
+        ? Resource("StateNoClientBrush")
+        : IsOffline
+        ? Resource("StateOfflineBrush")
+        : State switch
+        {
+            PcState.PrepaySession or PcState.PostpaySession => Resource("StateRunningBrush"),
+            PcState.LimitReached => Resource("StateLimitBrush"),
+            PcState.ManualUnlocked => Resource("StateRepairBrush"),
+            _ => Resource("StateIdleBrush")
+        };
+
+    public Brush DotBrush => IsManual ? Brushes.Transparent : (IsOnline ? Resource("OnlineDotBrush") : Resource("OfflineDotBrush"));
+}

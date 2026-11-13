@@ -1,0 +1,493 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype"><value>text/microsoft-resx</value></resheader>
+  <resheader name="version"><value>2.0</value></resheader>
+  <resheader name="reader"><value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value></resheader>
+  <resheader name="writer"><value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value></resheader>
+  <data name="Cancel" xml:space="preserve">
+    <value>Отмена</value>
+  </data>
+  <data name="Save" xml:space="preserve">
+    <value>Сохранить</value>
+  </data>
+  <data name="Ok" xml:space="preserve">
+    <value>ОК</value>
+  </data>
+  <data name="Close" xml:space="preserve">
+    <value>Закрыть</value>
+  </data>
+  <data name="ConfirmTitle" xml:space="preserve">
+    <value>Подтверждение</value>
+  </data>
+  <data name="ToolbarStart" xml:space="preserve">
+    <value>Старт</value>
+  </data>
+  <data name="ToolbarStop" xml:space="preserve">
+    <value>Стоп</value>
+  </data>
+  <data name="ToolbarMove" xml:space="preserve">
+    <value>Перенести</value>
+  </data>
+  <data name="ToolbarTurnOn" xml:space="preserve">
+    <value>Включить</value>
+  </data>
+  <data name="ToolbarRestart" xml:space="preserve">
+    <value>Перезагрузить</value>
+  </data>
+  <data name="ToolbarShutDown" xml:space="preserve">
+    <value>Выключить</value>
+  </data>
+  <data name="ToolbarSettings" xml:space="preserve">
+    <value>Настройки</value>
+  </data>
+  <data name="ToolbarReports" xml:space="preserve">
+    <value>Отчёты</value>
+  </data>
+  <data name="TooltipStart" xml:space="preserve">
+    <value>Старт (Enter)</value>
+  </data>
+  <data name="TooltipStop" xml:space="preserve">
+    <value>Стоп (Delete)</value>
+  </data>
+  <data name="SelectionCountFormat" xml:space="preserve">
+    <value>Выбрано: {0}</value>
+  </data>
+  <data name="ColumnPcNumber" xml:space="preserve">
+    <value>№ ПК</value>
+  </data>
+  <data name="ColumnTariff" xml:space="preserve">
+    <value>Тариф</value>
+  </data>
+  <data name="ColumnStart" xml:space="preserve">
+    <value>Начало</value>
+  </data>
+  <data name="ColumnEnd" xml:space="preserve">
+    <value>Конец</value>
+  </data>
+  <data name="ColumnRemaining" xml:space="preserve">
+    <value>Осталось</value>
+  </data>
+  <data name="StatBusy" xml:space="preserve">
+    <value>Занято</value>
+  </data>
+  <data name="StatOffline" xml:space="preserve">
+    <value>Не в сети</value>
+  </data>
+  <data name="EventLogHeader" xml:space="preserve">
+    <value>Журнал событий</value>
+  </data>
+  <data name="StatusListening" xml:space="preserve">
+    <value>Слушает TCP {0} / UDP {1}. {2}/{3} ПК онлайн.</value>
+  </data>
+  <data name="StateFree" xml:space="preserve">
+    <value>Свободен</value>
+  </data>
+  <data name="StateLocked" xml:space="preserve">
+    <value>Заблокирован</value>
+  </data>
+  <data name="StatePrepay" xml:space="preserve">
+    <value>Предоплата</value>
+  </data>
+  <data name="StatePostpay" xml:space="preserve">
+    <value>Постоплата</value>
+  </data>
+  <data name="StateLimitReached" xml:space="preserve">
+    <value>Лимит достигнут</value>
+  </data>
+  <data name="StateManualUnlocked" xml:space="preserve">
+    <value>Ремонт</value>
+  </data>
+  <data name="StateNewPc" xml:space="preserve">
+    <value>Новый ПК</value>
+  </data>
+  <data name="SelectExactlyOnePc" xml:space="preserve">
+    <value>Выберите ровно один ПК.</value>
+  </data>
+  <data name="SelectAtLeastOnePc" xml:space="preserve">
+    <value>Выберите хотя бы один ПК.</value>
+  </data>
+  <data name="SelectedNotReadyToStart" xml:space="preserve">
+    <value>Один или несколько выбранных элементов не готовы к запуску (не настроены или уже имеют сессию).</value>
+  </data>
+  <data name="SelectedMustShareSessionType" xml:space="preserve">
+    <value>Все выбранные сессии должны быть одного типа (предоплата или постоплата), чтобы остановить их вместе.</value>
+  </data>
+  <data name="SelectedMustShareTariff" xml:space="preserve">
+    <value>Все выбранные элементы должны использовать один и тот же тариф.</value>
+  </data>
+  <data name="SomeFailedTitle" xml:space="preserve">
+    <value>Некоторые не удались</value>
+  </data>
+  <data name="KindComputerPlural" xml:space="preserve">
+    <value>ПК</value>
+  </data>
+  <data name="MultiTargetFormat" xml:space="preserve">
+    <value>{0}: {1} ({2})</value>
+  </data>
+  <data name="MoveOnlyActiveSession" xml:space="preserve">
+    <value>Перенос работает только для активной сессии.</value>
+  </data>
+  <data name="PcHasNoActiveSession" xml:space="preserve">
+    <value>У этого ПК нет активной сессии.</value>
+  </data>
+  <data name="StopPrepayHeader" xml:space="preserve">
+    <value>Остановить сессию предоплаты?</value>
+  </data>
+  <data name="StopPrepayUnused" xml:space="preserve">
+    <value>К возврату</value>
+  </data>
+  <data name="StopPrepayTotal" xml:space="preserve">
+    <value>Всего к возврату</value>
+  </data>
+  <data name="StopPrepayRefundNote" xml:space="preserve">
+    <value>В доход записывается только использованное время. Верните неиспользованную сумму клиенту.</value>
+  </data>
+  <data name="CannotStopSessionTitle" xml:space="preserve">
+    <value>Невозможно остановить сессию</value>
+  </data>
+  <data name="NoPcsSelectedConfirmAll" xml:space="preserve">
+    <value>ПК не выбраны. Применить ко ВСЕМ включённым ПК?</value>
+  </data>
+  <data name="SelectedHaveActiveSessionConfirm" xml:space="preserve">
+    <value>У одного или нескольких выбранных ПК есть активная сессия. Продолжить?</value>
+  </data>
+  <data name="NoEligiblePcs" xml:space="preserve">
+    <value>Нет подходящих ПК.</value>
+  </data>
+  <data name="SettingsTitle" xml:space="preserve">
+    <value>Настройки</value>
+  </data>
+  <data name="TabGeneral" xml:space="preserve">
+    <value>Общие</value>
+  </data>
+  <data name="TabTariffs" xml:space="preserve">
+    <value>Тарифы</value>
+  </data>
+  <data name="TabResources" xml:space="preserve">
+    <value>Компьютеры</value>
+  </data>
+  <data name="LabelClubName" xml:space="preserve">
+    <value>Название клуба</value>
+  </data>
+  <data name="LabelLockScreenText" xml:space="preserve">
+    <value>Текст на экране блокировки</value>
+  </data>
+  <data name="LabelLockScreenLanguage" xml:space="preserve">
+    <value>Язык экрана блокировки</value>
+  </data>
+  <data name="LabelAdminPanelLanguage" xml:space="preserve">
+    <value>Язык панели администратора</value>
+  </data>
+  <data name="LabelWarningMinutes" xml:space="preserve">
+    <value>Минуты предупреждения (первое, второе)</value>
+  </data>
+  <data name="LabelAfterSessionAction" xml:space="preserve">
+    <value>После окончания сессии</value>
+  </data>
+  <data name="LabelProcessList" xml:space="preserve">
+    <value>Список процессов (через запятую, напр. steam.exe)</value>
+  </data>
+  <data name="LabelUnlockPassword" xml:space="preserve">
+    <value>Пароль разблокировки ПК (Ctrl+Shift+F12 на заблокированном ПК). Оставьте пустым, чтобы не менять.</value>
+  </data>
+  <data name="LabelAutoShutdown" xml:space="preserve">
+    <value>Выключать простаивающие заблокированные ПК через (минуты, 0 = отключено)</value>
+  </data>
+  <data name="AfterSessionClose" xml:space="preserve">
+    <value>Закрыть процессы</value>
+  </data>
+  <data name="AfterSessionRestart" xml:space="preserve">
+    <value>Перезагрузить</value>
+  </data>
+  <data name="AfterSessionShutdown" xml:space="preserve">
+    <value>Выключить</value>
+  </data>
+  <data name="LabelName" xml:space="preserve">
+    <value>Название</value>
+  </data>
+  <data name="LabelPricePerHour" xml:space="preserve">
+    <value>Цена за час (UZS)</value>
+  </data>
+  <data name="LabelMinPayment" xml:space="preserve">
+    <value>Минимальный платёж (UZS)</value>
+  </data>
+  <data name="LabelMaxPayment" xml:space="preserve">
+    <value>Максимальный платёж (UZS)</value>
+  </data>
+  <data name="NewTariffDefaultName" xml:space="preserve">
+    <value>Новый тариф</value>
+  </data>
+  <data name="TariffNamesMustBeUniqueAndNotEmpty" xml:space="preserve">
+    <value>Названия тарифов должны быть уникальными и не пустыми.</value>
+  </data>
+  <data name="TariffPriceAndLimitsMustBeValid" xml:space="preserve">
+    <value>У каждого тарифа цена должна быть больше 0, а минимальная оплата не может быть больше максимальной.</value>
+  </data>
+  <data name="ComputersHint" xml:space="preserve">
+    <value>Назначьте номер и тариф новому ПК, чтобы его можно было использовать. Отключённые строки остаются заблокированными и пропадают из главной панели.</value>
+  </data>
+  <data name="LabelNumber" xml:space="preserve">
+    <value>Номер</value>
+  </data>
+  <data name="LabelTariff" xml:space="preserve">
+    <value>Тариф</value>
+  </data>
+  <data name="NoTariffsForKind" xml:space="preserve">
+    <value>Тарифов ещё нет — сначала добавьте его в Настройки → Тарифы.</value>
+  </data>
+  <data name="EnterAValidNumber" xml:space="preserve">
+    <value>Введите корректный номер.</value>
+  </data>
+  <data name="ChooseATariff" xml:space="preserve">
+    <value>Выберите тариф.</value>
+  </data>
+  <data name="AddComputerTitle" xml:space="preserve">
+    <value>Добавить офлайн-ПК</value>
+  </data>
+  <data name="ButtonAdd" xml:space="preserve">
+    <value>Добавить</value>
+  </data>
+  <data name="ButtonDelete" xml:space="preserve">
+    <value>Удалить</value>
+  </data>
+  <data name="SelectAResourceToDelete" xml:space="preserve">
+    <value>Выберите компьютер для удаления.</value>
+  </data>
+  <data name="DeleteResourceConfirm" xml:space="preserve">
+    <value>Удалить этот компьютер? Это действие нельзя отменить.</value>
+  </data>
+  <data name="CannotDeleteResourceWithHistory" xml:space="preserve">
+    <value>У этого компьютера есть история сессий, поэтому его нельзя удалить - это удалило бы его и из прошлых отчётов. Снимите галочку «Включён», чтобы скрыть его вместо удаления.</value>
+  </data>
+  <data name="SelectATariffToDelete" xml:space="preserve">
+    <value>Выберите тариф для удаления.</value>
+  </data>
+  <data name="DeleteTariffConfirm" xml:space="preserve">
+    <value>Удалить этот тариф? Это действие нельзя отменить.</value>
+  </data>
+  <data name="CannotDeleteTariffInUse" xml:space="preserve">
+    <value>Этот тариф назначен компьютеру, поэтому его нельзя удалить. Сначала назначьте другой тариф.</value>
+  </data>
+  <data name="ColumnEnabled" xml:space="preserve">
+    <value>Включён</value>
+  </data>
+  <data name="ColumnHostname" xml:space="preserve">
+    <value>Имя ПК</value>
+  </data>
+  <data name="ColumnIp" xml:space="preserve">
+    <value>IP</value>
+  </data>
+  <data name="ColumnMac" xml:space="preserve">
+    <value>MAC</value>
+  </data>
+  <data name="ColumnOnline" xml:space="preserve">
+    <value>Онлайн</value>
+  </data>
+  <data name="PcNumbersMustBeUnique" xml:space="preserve">
+    <value>Номера ПК должны быть уникальными.</value>
+  </data>
+  <data name="LanguageChangedNotice" xml:space="preserve">
+    <value>Перезапустите ClubControl, чтобы полностью применить новый язык панели.</value>
+  </data>
+  <data name="LangEnglish" xml:space="preserve">
+    <value>Английский</value>
+  </data>
+  <data name="LangRussian" xml:space="preserve">
+    <value>Русский</value>
+  </data>
+  <data name="LangUzbek" xml:space="preserve">
+    <value>Узбекский</value>
+  </data>
+  <data name="StartSessionTitle" xml:space="preserve">
+    <value>Начать сессию</value>
+  </data>
+  <data name="PcNumberFormat" xml:space="preserve">
+    <value>ПК №{0}</value>
+  </data>
+  <data name="PrepayByMoney" xml:space="preserve">
+    <value>Предоплата — по сумме (UZS)</value>
+  </data>
+  <data name="Postpay" xml:space="preserve">
+    <value>Постоплата (счёт идёт вверх, оплата в конце)</value>
+  </data>
+  <data name="ButtonStart" xml:space="preserve">
+    <value>Старт</value>
+  </data>
+  <data name="LabelNote" xml:space="preserve">
+    <value>Заметка (необязательно)</value>
+  </data>
+  <data name="MoveSessionTitle" xml:space="preserve">
+    <value>Перенести сессию</value>
+  </data>
+  <data name="MoveSessionHeaderFormat" xml:space="preserve">
+    <value>Перенос сессии ПК №{0}</value>
+  </data>
+  <data name="MoveToLabel" xml:space="preserve">
+    <value>Перенести на:</value>
+  </data>
+  <data name="NoFreePc" xml:space="preserve">
+    <value>Нет свободного ПК для переноса.</value>
+  </data>
+  <data name="ChooseTargetPc" xml:space="preserve">
+    <value>Выберите ПК назначения.</value>
+  </data>
+  <data name="ButtonMove" xml:space="preserve">
+    <value>Перенести</value>
+  </data>
+  <data name="PaymentTitle" xml:space="preserve">
+    <value>Оплата</value>
+  </data>
+  <data name="AmountDueLabel" xml:space="preserve">
+    <value>Сумма к оплате:</value>
+  </data>
+  <data name="ButtonPaid" xml:space="preserve">
+    <value>Оплачено</value>
+  </data>
+  <data name="PasswordLabel" xml:space="preserve">
+    <value>Пароль:</value>
+  </data>
+  <data name="ConfirmPasswordLabel" xml:space="preserve">
+    <value>Подтвердите пароль:</value>
+  </data>
+  <data name="TitleCreatePassword" xml:space="preserve">
+    <value>Создайте пароль администратора</value>
+  </data>
+  <data name="TitleResetPassword" xml:space="preserve">
+    <value>Найден файл сброса пароля — установите новый пароль администратора</value>
+  </data>
+  <data name="TitleVerifyForExit" xml:space="preserve">
+    <value>Введите пароль администратора, чтобы выйти из ClubControl</value>
+  </data>
+  <data name="TitleLogin" xml:space="preserve">
+    <value>Введите пароль администратора</value>
+  </data>
+  <data name="PasswordEmpty" xml:space="preserve">
+    <value>Пароль не может быть пустым.</value>
+  </data>
+  <data name="PasswordsDontMatch" xml:space="preserve">
+    <value>Пароли не совпадают.</value>
+  </data>
+  <data name="WrongPassword" xml:space="preserve">
+    <value>Неверный пароль.</value>
+  </data>
+  <data name="PasswordTooShort" xml:space="preserve">
+    <value>Пароль должен содержать не менее {0} символов.</value>
+  </data>
+  <data name="PasswordNeedsLetterAndDigit" xml:space="preserve">
+    <value>Пароль должен содержать хотя бы одну букву и одну цифру.</value>
+  </data>
+  <data name="LoginLockedOut" xml:space="preserve">
+    <value>Слишком много неверных попыток. Попробуйте снова через {0} секунд.</value>
+  </data>
+  <data name="ReportsTitle" xml:space="preserve">
+    <value>Отчёты</value>
+  </data>
+  <data name="PeriodDaily" xml:space="preserve">
+    <value>День</value>
+  </data>
+  <data name="PeriodWeekly" xml:space="preserve">
+    <value>Неделя</value>
+  </data>
+  <data name="PeriodMonthly" xml:space="preserve">
+    <value>Месяц</value>
+  </data>
+  <data name="TotalIncome" xml:space="preserve">
+    <value>Доход</value>
+  </data>
+  <data name="TotalSessions" xml:space="preserve">
+    <value>Сессий</value>
+  </data>
+  <data name="TotalHours" xml:space="preserve">
+    <value>Часов всего</value>
+  </data>
+  <data name="ByPc" xml:space="preserve">
+    <value>По ПК</value>
+  </data>
+  <data name="ByTariff" xml:space="preserve">
+    <value>По тарифу</value>
+  </data>
+  <data name="BySessionType" xml:space="preserve">
+    <value>По типу сессии</value>
+  </data>
+  <data name="ColumnIncome" xml:space="preserve">
+    <value>Доход</value>
+  </data>
+  <data name="ColumnHours" xml:space="preserve">
+    <value>Часы</value>
+  </data>
+  <data name="ColumnType" xml:space="preserve">
+    <value>Тип</value>
+  </data>
+  <data name="Export" xml:space="preserve">
+    <value>Экспорт</value>
+  </data>
+  <data name="MoveSelectOneOrTwo" xml:space="preserve">
+    <value>Выберите один ПК или два, чтобы перенести/поменять их местами.</value>
+  </data>
+  <data name="MoveSameTariffOnly" xml:space="preserve">
+    <value>Сессию можно переносить только между ПК с одним тарифом.</value>
+  </data>
+  <data name="SessionsTab" xml:space="preserve">
+    <value>Сессии</value>
+  </data>
+  <data name="ColumnDuration" xml:space="preserve">
+    <value>Длительность</value>
+  </data>
+  <data name="ColumnNote" xml:space="preserve">
+    <value>Заметка</value>
+  </data>
+  <data name="ReportStillRunning" xml:space="preserve">
+    <value>идёт</value>
+  </data>
+  <data name="StopStartedFormat" xml:space="preserve">
+    <value>Начало {0} · прошло {1}</value>
+  </data>
+  <data name="AuthRejectedCard" xml:space="preserve">
+    <value>🔒 Нет доступа</value>
+  </data>
+  <data name="AuthRejectedTooltip" xml:space="preserve">
+    <value>Клиент на этом компьютере запущен, но сервер отклоняет его секретный токен (файл токена на ПК потерян или повреждён). Что делать: в Настройках очистите номер этого ПК и сохраните, затем введите номер снова и сохраните.</value>
+  </data>
+  <data name="ClientMissingCard" xml:space="preserve">
+    <value>⚠ Нет клиента</value>
+  </data>
+  <data name="ClientMissingTooltip" xml:space="preserve">
+    <value>Компьютер включён, но клиент ClubControl на нём не запущен (удалён, деинсталлирован или закрыт). Проверьте этот компьютер.</value>
+  </data>
+  <data name="StatNoClient" xml:space="preserve">
+    <value>Нет клиента</value>
+  </data>
+  <data name="ToolbarOpenShift" xml:space="preserve">
+    <value>Открыть смену</value>
+  </data>
+  <data name="ToolbarCloseShift" xml:space="preserve">
+    <value>Закрыть смену</value>
+  </data>
+  <data name="ShiftChipOpen" xml:space="preserve">
+    <value>Смена открыта с {0}</value>
+  </data>
+  <data name="ShiftChipNone" xml:space="preserve">
+    <value>Смена не открыта</value>
+  </data>
+  <data name="ShiftCloseBlocked" xml:space="preserve">
+    <value>Идут сессии ({0}), поэтому смену закрыть нельзя. Сначала завершите их или примите оплату.</value>
+  </data>
+  <data name="ShiftCloseConfirm" xml:space="preserve">
+    <value>Закрыть смену, открытую в {0}?</value>
+  </data>
+  <data name="PeriodShift" xml:space="preserve">
+    <value>Смена</value>
+  </data>
+  <data name="ShiftNone" xml:space="preserve">
+    <value>Смен пока нет</value>
+  </data>
+  <data name="ShiftLabel" xml:space="preserve">
+    <value>Смена №{0}: {1} – {2}</value>
+  </data>
+  <data name="ShiftStillOpen" xml:space="preserve">
+    <value>открыта</value>
+  </data>
+  <data name="LabelShiftAutoClose" xml:space="preserve">
+    <value>Автоматически закрывать забытую смену через столько часов без начала и конца сессий (1-72)</value>
+  </data>
+</root>

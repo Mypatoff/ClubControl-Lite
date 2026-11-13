@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype"><value>text/microsoft-resx</value></resheader>
+  <resheader name="version"><value>2.0</value></resheader>
+  <resheader name="reader"><value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value></resheader>
+  <resheader name="writer"><value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value></resheader>
+  <data name="PleaseGoToAdmin" xml:space="preserve">
+    <value>Administratorga murojaat qiling</value>
+  </data>
+  <data name="PcNumberFormat" xml:space="preserve">
+    <value>Kompyuter №{0}</value>
+  </data>
+  <data name="PerHourFormat" xml:space="preserve">
+    <value>{0} UZS/soat</value>
+  </data>
+  <data name="ManualUnlockBadge" xml:space="preserve">
+    <value>Qo'lda ochildi</value>
+  </data>
+  <data name="UnlockTitle" xml:space="preserve">
+    <value>Kompyuterni ochish</value>
+  </data>
+  <data name="UnlockPrompt" xml:space="preserve">
+    <value>Ochish parolini kiriting.</value>
+  </data>
+  <data name="UnlockWrongPassword" xml:space="preserve">
+    <value>Parol noto'g'ri.</value>
+  </data>
+  <data name="UnlockNotConfigured" xml:space="preserve">
+    <value>Ochish paroli belgilanmagan. Uni server sozlamalarida belgilang.</value>
+  </data>
+  <data name="UnlockLockedOut" xml:space="preserve">
+    <value>Juda ko'p noto'g'ri urinish. {0} soniyadan keyin qayta urining.</value>
+  </data>
+  <data name="Ok" xml:space="preserve">
+    <value>OK</value>
+  </data>
+  <data name="Cancel" xml:space="preserve">
+    <value>Bekor qilish</value>
+  </data>
+  <data name="Remaining" xml:space="preserve">
+    <value>qoldi</value>
+  </data>
+  <data name="CurrencyUzs" xml:space="preserve">
+    <value>UZS</value>
+  </data>
+  <data name="WarningMinutesLeft" xml:space="preserve">
+    <value>{0} daqiqa qoldi.</value>
+  </data>
+  <data name="WarningCostApproaching" xml:space="preserve">
+    <value>Narx maksimal chegaraga yaqinlashmoqda.</value>
+  </data>
+</root>

@@ -1,0 +1,1138 @@
+using System;
+using System.Collections.Generic;
+using System.ComponentModel;
+using System.Globalization;
+using System.IO;
+using System.Linq;
+using System.Threading.Tasks;
+using System.Windows;
+using System.Windows.Controls;
+using System.Windows.Data;
+using System.Windows.Media;
+using System.Windows.Threading;
+using ClubControl.Server.Data;
+using ClubControl.Server.Data.Models;
+using ClubControl.Server.Hubs;
+using ClubControl.Server.Resources;
+using ClubControl.Server.Services;
+using ClubControl.Server.Windows;
+using ClubControl.Shared;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
+
+namespace ClubControl.Server;
+
+public partial class MainWindow : Window
+{
+    private readonly DispatcherTimer _refreshTimer;
+
+    // Set once the host has started (see App.OnStartup) - MainWindow is only ever created after that.
+    private IServiceProvider Services => ((App)Application.Current).Services!;
+
+    public MainWindow()
+    {
+        InitializeComponent();
+        ApplyLocalization();
+        RestoreLogHeight();
+
+        _refreshTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };
+        _refreshTimer.Tick += async (_, _) =>
+        {
+            if (!_refreshing) // the previous refresh is still loading: skip this tick
+                await RefreshAsync();
+        };
+        _refreshTimer.Start();
+    }
+
+    // ---- the event log at the bottom: drag the bar above it to resize, down to the edge to hide it ----
+
+    private const double DefaultLogHeight = 110;
+
+    private static readonly string LogHeightFile = Path.Combine(DbPaths.DataDirectory, "log-panel-height.txt");
+
+    private double _heightBeforeHiding = DefaultLogHeight;
+
+    /// <summary>The height the admin left it at last time.</summary>
+    private void RestoreLogHeight()
+    {
+        try
+        {
+            if (File.Exists(LogHeightFile) && double.TryParse(File.ReadAllText(LogHeightFile).Trim(), NumberStyles.Float, CultureInfo.InvariantCulture, out var height))
+                LogRow.Height = new GridLength(Math.Clamp(height, 0, 600));
+        }
+        catch (Exception)
+        {
+            // A missing or unreadable file just means the default height.
+        }
+    }
+
+    private void SaveLogHeight()
+    {
+        try
+        {
+            File.WriteAllText(LogHeightFile, LogRow.ActualHeight.ToString("F0", CultureInfo.InvariantCulture));
+        }
+        catch (Exception)
+        {
+            // Only a convenience: the height simply is not remembered.
+        }
+    }
+
+    private void LogSplitter_DragCompleted(object sender, System.Windows.Controls.Primitives.DragCompletedEventArgs e)
+    {
+        // The splitter leaves the row at the dragged height; make it a fixed number again and remember it.
+        LogRow.Height = new GridLength(LogRow.ActualHeight);
+        SaveLogHeight();
+    }
+
+    /// <summary>Double-click on the bar: hide the log, or bring it back to the height it had.</summary>
+    private void LogSplitter_MouseDoubleClick(object sender, System.Windows.Input.MouseButtonEventArgs e)
+    {
+        if (LogRow.ActualHeight > 1)
+        {
+            _heightBeforeHiding = LogRow.ActualHeight;
+            LogRow.Height = new GridLength(0);
+        }
+        else
+        {
+            LogRow.Height = new GridLength(_heightBeforeHiding > 1 ? _heightBeforeHiding : DefaultLogHeight);
+        }
+
+        // The new height is applied by the next layout pass; ActualHeight would still be the old one here.
+        Dispatcher.BeginInvoke(SaveLogHeight, DispatcherPriority.Loaded);
+    }
+
+    // ---- the action bar: always one row ----
+
+    // The label of each toolbar button, kept apart so the bar can show "icon text" or, as a last resort, the icon alone.
+    private sealed record ToolbarLabel(string Icon, string Text, string? OriginalTip);
+
+    private readonly Dictionary<Button, ToolbarLabel> _toolbarLabels = new();
+    private bool _toolbarIconsOnly;
+
+    // How small the whole bar may get (text and buttons together) before the text is dropped.
+    private const double MinToolbarScale = 0.5;
+
+    private void SetToolbarLabel(Button button, string icon, string text, string? tip = null)
+    {
+        var label = new ToolbarLabel(icon, text, tip);
+        if (_toolbarLabels.TryGetValue(button, out var old) && old == label)
+            return; // the shift button asks every second; nothing to redo when the text is the same
+
+        _toolbarLabels[button] = label;
+        ApplyToolbarLabels(_toolbarIconsOnly);
+        FitToolbar(); // a longer text (another language, "Close shift") may need a smaller look; does nothing before the first layout
+    }
+
+    private void OnActionBarSizeChanged(object sender, SizeChangedEventArgs e)
+    {
+        if (e.WidthChanged)
+            FitToolbar();
+    }
+
+    /// <summary>Shrinks the whole bar (buttons and text together) just enough to stay in one row. Only when it would
+    /// become unreadably small does it fall back to icons.</summary>
+    private void FitToolbar()
+    {
+        if (ActionBar.ActualWidth <= 0 || _toolbarLabels.Count == 0)
+            return;
+
+        var available = ActionBar.ActualWidth - ActionBar.Padding.Left - ActionBar.Padding.Right - ActionBar.BorderThickness.Left - ActionBar.BorderThickness.Right;
+
+        ApplyToolbarLabels(false);
+        var scale = available / ToolbarWidth();
+        if (scale < MinToolbarScale)
+        {
+            ApplyToolbarLabels(true);
+            scale = available / ToolbarWidth();
+        }
+
+        // Round down so a pixel of rounding never pushes the last button into a second row.
+        scale = Math.Floor(Math.Clamp(scale, MinToolbarScale, 1.0) * 100) / 100;
+        ActionPanel.LayoutTransform = scale >= 1.0 ? Transform.Identity : new ScaleTransform(scale, scale);
+
+        // The real layout pass must run again with the real width, not trust the measuring done above.
+        ActionLeft.InvalidateMeasure();
+        ActionRight.InvalidateMeasure();
+    }
+
+    private double ToolbarWidth()
+    {
+        // WPF hands back the size from the last layout when a panel is not marked dirty, and a button changed here
+        // does not mark its panel dirty by itself. Without this the answer is one look behind and the bar picks the wrong one.
+        ActionLeft.InvalidateMeasure();
+        ActionRight.InvalidateMeasure();
+
+        var infinite = new Size(double.PositiveInfinity, double.PositiveInfinity);
+        ActionLeft.Measure(infinite);
+        ActionRight.Measure(infinite);
+        return ActionLeft.DesiredSize.Width + ActionRight.DesiredSize.Width;
+    }
+
+    private void ApplyToolbarLabels(bool iconsOnly)
+    {
+        _toolbarIconsOnly = iconsOnly;
+        var padding = iconsOnly ? new Thickness(11, 7, 11, 7) : new Thickness(14, 7, 14, 7);
+
+        foreach (var (button, label) in _toolbarLabels)
+        {
+            button.Padding = padding;
+            if (iconsOnly)
+            {
+                button.Content = label.Icon;
+                button.ToolTip = label.OriginalTip is null ? label.Text : $"{label.Text} - {label.OriginalTip}";
+            }
+            else
+            {
+                button.Content = $"{label.Icon} {label.Text}";
+                button.ToolTip = label.OriginalTip;
+            }
+        }
+    }
+
+    private void ApplyLocalization()
+    {
+        SetToolbarLabel(StartButton, "▶", Strings.Get("ToolbarStart"), Strings.Get("TooltipStart"));
+        SetToolbarLabel(StopButton, "⏹", Strings.Get("ToolbarStop"), Strings.Get("TooltipStop"));
+        SetToolbarLabel(MoveButton, "↔", Strings.Get("ToolbarMove"));
+        SetToolbarLabel(TurnOnButton, "⚡", Strings.Get("ToolbarTurnOn"));
+        SetToolbarLabel(RestartButton, "🔁", Strings.Get("ToolbarRestart"));
+        SetToolbarLabel(ShutDownButton, "⏻", Strings.Get("ToolbarShutDown"));
+        SetToolbarLabel(SettingsButton, "⚙", Strings.Get("ToolbarSettings"));
+        SetToolbarLabel(ReportsButton, "📊", Strings.Get("ToolbarReports"));
+
+        CtxStart.Header = Strings.Get("ToolbarStart");
+        CtxStop.Header = Strings.Get("ToolbarStop");
+        CtxMove.Header = Strings.Get("ToolbarMove");
+        CtxTurnOn.Header = Strings.Get("ToolbarTurnOn");
+        CtxRestart.Header = Strings.Get("ToolbarRestart");
+        CtxShutDown.Header = Strings.Get("ToolbarShutDown");
+        CtxReports.Header = "📊 " + Strings.Get("ToolbarReports");
+
+        EventLogHeaderText.Text = Strings.Get("EventLogHeader");
+
+    }
+
+    // The window only ever hides - the tray's "Exit" (password-protected) is the only way to really quit.
+    protected override void OnClosing(CancelEventArgs e)
+    {
+        e.Cancel = true;
+        Hide();
+    }
+
+    // The refresh has two parts: the database is read on a worker thread (SQLite reads are synchronous, and doing them here
+    // froze the window for part of every second), then the results are shown on the UI thread. Only raw data crosses
+    // over: the texts come from Strings, which uses the UI thread's language.
+    private sealed record PanelData(Dictionary<int, string> TariffNames, Dictionary<int, SessionService.ActiveSessionSnapshot> Snapshots,
+        List<Pc> Pcs, Shift? OpenShift, int NewestEventId, List<EventLogEntry>? Events);
+
+    private bool _refreshing;
+    private bool _refreshAgain;
+
+    /// <summary>
+    /// Refreshes the panel. Never two at once: a refresh asked for while one is running (after an action) runs again
+    /// right after it, so the action's result is shown; the timer simply skips its tick instead.
+    /// </summary>
+    private async Task RefreshAsync()
+    {
+        if (_refreshing)
+        {
+            _refreshAgain = true;
+            return;
+        }
+
+        _refreshing = true;
+        try
+        {
+            do
+            {
+                _refreshAgain = false;
+                await RefreshOnceAsync();
+            }
+            while (_refreshAgain);
+        }
+        finally
+        {
+            _refreshing = false;
+        }
+    }
+
+    private async Task RefreshOnceAsync()
+    {
+        // The refresh rebuilds every card, which would break a rectangle selection in progress.
+        if (_dragging)
+            return;
+
+        var timer = SlowLog.Start("Panel refresh");
+        var services = Services;
+        var shownEventId = _shownEventId;
+        var culture = CultureInfo.CurrentUICulture.Name;
+        var eventsOutdated = culture != _shownEventCulture;
+
+        var data = await Task.Run(async () =>
+        {
+            using var scope = services.CreateScope();
+            var db = scope.ServiceProvider.GetRequiredService<ClubDbContext>();
+
+            var tariffNames = await db.Tariffs.AsNoTracking().ToDictionaryAsync(t => t.Id, t => t.Name);
+            var snapshots = await scope.ServiceProvider.GetRequiredService<SessionService>().GetActiveSessionSnapshotsAsync();
+            var pcs = await db.Pcs.AsNoTracking().OrderBy(p => p.Number).ToListAsync();
+            var openShift = await ShiftHelper.GetOpenAsync(db);
+
+            // The newest id is a one-row read; the 200 lines are fetched only when there is something new.
+            var newestEventId = await db.EventLogEntries.MaxAsync(e => (int?)e.Id) ?? 0;
+            List<EventLogEntry>? events = null;
+            if (newestEventId != shownEventId || eventsOutdated)
+            {
+                events = await db.EventLogEntries.AsNoTracking()
+                    .OrderByDescending(e => e.TimestampUtc)
+                    .Take(200)
+                    .ToListAsync();
+            }
+
+            return new PanelData(tariffNames, snapshots, pcs, openShift, newestEventId, events);
+        });
+        timer.Step("database");
+
+        // A rectangle selection may have started while the data was loading.
+        if (_dragging)
+            return;
+
+        var snapshots = data.Snapshots;
+
+        // Disabled PCs are hidden from this operational panel entirely -
+        // they're still locked and excluded from "all" actions, but a disabled PC has no
+        // visible row here to be confused by. Settings > Computers is where they're re-enabled or
+        // actually deleted. The one exception is a disabled PC that somehow still has an active
+        // session (e.g. disabled mid-session) - that must stay visible, since hiding it would also
+        // hide the only place to free/stop it and collect payment.
+        var pcById = data.Pcs.ToDictionary(p => p.Id); // for the event log, which also mentions hidden (disabled) PCs
+        var pcs = data.Pcs.Where(p => p.Enabled || snapshots.ContainsKey(p.Id)).ToList();
+
+        var selectedIds = PcList.SelectedItems.Cast<PcRow>().Select(p => p.Id).ToHashSet();
+        var clientMissing = services.GetRequiredService<ClientMissingTracker>();
+        var rejections = services.GetRequiredService<AuthRejectionTracker>();
+        var rows = pcs.Select(pc => BuildRow(pc, data.TariffNames, snapshots.GetValueOrDefault(pc.Id),
+            clientMissing.IsMissing(pc.MachineGuid), rejections.IsRejected(pc.MachineGuid, DateTime.UtcNow))).ToList();
+
+        // The same cards in the same order (the usual case, every second): the cards on screen just take the new
+        // values, and only those that changed redraw. Rebuilding all of them every second was most of this
+        // window's work. Only a different set of cards, a different order or another language rebuilds the list.
+        if (culture == _shownCulture && SameCards(_shownRows, rows))
+        {
+            for (var i = 0; i < rows.Count; i++)
+                _shownRows[i].CopyFrom(rows[i]);
+
+            rows = _shownRows;
+        }
+        else
+        {
+            // Replacing ItemsSource rebuilds every card and resets the scroll position, so remember it.
+            var scrollOffset = FindDescendant<ScrollViewer>(PcList)?.VerticalOffset ?? 0;
+            PcList.ItemsSource = BuildCardView(rows);
+            foreach (var row in rows.Where(r => selectedIds.Contains(r.Id)))
+                PcList.SelectedItems.Add(row);
+            if (scrollOffset > 0)
+                _ = Dispatcher.BeginInvoke(() => FindDescendant<ScrollViewer>(PcList)?.ScrollToVerticalOffset(scrollOffset),
+                    DispatcherPriority.Loaded);
+
+            _shownRows = rows;
+            _shownCulture = culture;
+        }
+
+        UpdateCounters(rows);
+        UpdateShiftControls(data.OpenShift);
+
+        if (data.Events is not null)
+        {
+            EventLogList.ItemsSource = data.Events.Select(e => FormatEvent(e, pcById)).ToList();
+            _shownEventId = data.NewestEventId;
+            _shownEventCulture = culture;
+        }
+
+        StatusText.Text = Strings.Format("StatusListening", NetworkConstants.SignalRPort, NetworkConstants.DiscoveryPort,
+            pcs.Count(p => p.IsOnline), pcs.Count);
+        timer.Step("show");
+        timer.Finish();
+    }
+
+    // What is on screen now, so the next refresh can update it in place (see RefreshAsync).
+    private List<PcRow> _shownRows = new();
+    private string _shownCulture = "";
+    private int _shownEventId = -1;
+    private string _shownEventCulture = "";
+
+    /// <summary>Same cards, same order: what the list sorts by (section, then number) has not changed.</summary>
+    private static bool SameCards(List<PcRow> shown, List<PcRow> fresh) =>
+        shown.Count == fresh.Count &&
+        shown.Zip(fresh).All(pair => pair.First.Id == pair.Second.Id && pair.First.Number == pair.Second.Number);
+
+    /// <summary>The cards in number order.</summary>
+    private static ListCollectionView BuildCardView(List<PcRow> rows)
+    {
+        var view = new ListCollectionView(rows);
+        view.SortDescriptions.Add(new SortDescription(nameof(PcRow.Number), ListSortDirection.Ascending));
+        return view;
+    }
+
+    private void UpdateCounters(List<PcRow> rows)
+    {
+        var computers = rows;
+
+        var busy = computers.Count(r => r.HasActiveSession);
+        var noClient = computers.Count(r => r.IsClientMissing && !r.HasActiveSession);
+        var offline = computers.Count(r => r.IsOffline && !r.IsClientMissing && !r.HasActiveSession);
+        var repair = computers.Count(r => r.IsRepair && !r.IsOffline);
+
+        StatFreeText.Text = $"{computers.Count - busy - offline - noClient - repair} {Strings.Get("StateFree")}";
+        StatBusyText.Text = $"{busy} {Strings.Get("StatBusy")}";
+        StatOfflineText.Text = $"{offline} {Strings.Get("StatOffline")}";
+
+        // These two chips are only shown while there is something to show, so the usual bar stays as short as it was.
+        // The "No client" chip counts every such PC, also one that still has a session: that case matters most.
+        var noClientShown = computers.Count(r => r.IsClientMissing);
+        NoClientChip.Visibility = noClientShown > 0 ? Visibility.Visible : Visibility.Collapsed;
+        StatNoClientText.Text = $"{noClientShown} {Strings.Get("StatNoClient")}";
+        RepairChip.Visibility = repair > 0 ? Visibility.Visible : Visibility.Collapsed;
+        StatRepairText.Text = $"{repair} {Strings.Get("StateManualUnlocked")}";
+    }
+
+    /// <summary>The shift chip in the header and the one button that opens or closes the shift.</summary>
+    private void UpdateShiftControls(Shift? open)
+    {
+        if (open is null)
+            SetToolbarLabel(ShiftButton, "🔓", Strings.Get("ToolbarOpenShift"));
+        else
+            SetToolbarLabel(ShiftButton, "🔒", Strings.Get("ToolbarCloseShift"));
+        StatShiftText.Text = open is null
+            ? Strings.Get("ShiftChipNone")
+            : Strings.Format("ShiftChipOpen", open.OpenedUtc.ToLocalTime().ToString("dd.MM HH:mm"));
+        ShiftDot.Fill = (Brush)FindResource(open is null ? "TextSecondaryBrush" : "StateRunningBrush");
+    }
+
+    private async void OnShiftToggle(object sender, RoutedEventArgs e)
+    {
+        using var scope = Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<ClubDbContext>();
+
+        try
+        {
+            var open = await ShiftHelper.GetOpenAsync(db);
+            if (open is null)
+            {
+                await ShiftHelper.OpenAsync(db);
+            }
+            else
+            {
+                // A shift cannot end while a session is running (or waiting to be paid): tell the admin why.
+                var running = await ShiftHelper.CountRunningSessionsAsync(db);
+                if (running > 0)
+                {
+                    MessageBox.Show(Strings.Format("ShiftCloseBlocked", running), Strings.Get("ConfirmTitle"),
+                        MessageBoxButton.OK, MessageBoxImage.Warning);
+                    return;
+                }
+
+                if (MessageBox.Show(Strings.Format("ShiftCloseConfirm", open.OpenedUtc.ToLocalTime().ToString("dd.MM.yyyy HH:mm")),
+                        Strings.Get("ConfirmTitle"), MessageBoxButton.YesNo, MessageBoxImage.Question) != MessageBoxResult.Yes)
+                    return;
+
+                await ShiftHelper.CloseAsync(db);
+            }
+        }
+        catch (InvalidOperationException ex)
+        {
+            // E.g. a session was started while the confirmation was open.
+            MessageBox.Show(ex.Message, Strings.Get("ConfirmTitle"), MessageBoxButton.OK, MessageBoxImage.Warning);
+        }
+
+        await RefreshAsync();
+    }
+
+    private static PcRow BuildRow(Pc pc,Dictionary<int, string> tariffNames, SessionService.ActiveSessionSnapshot? snap, bool clientMissing, bool authRejected)
+    {
+        var amount = "";
+        var start = "";
+        var end = "";
+        var remaining = "";
+        var sessionType = "";
+
+        // A PC opened by staff (repair) bills nothing: say so on the card instead of leaving the line empty.
+        if (pc.State == PcState.ManualUnlocked)
+            amount = "0 UZS";
+
+        if (snap is not null)
+        {
+            sessionType = Strings.SessionTypeName(snap.Type);
+            // Prepay shows progress through the prepaid total; postpay shows only what the client owes right now.
+            amount = snap.Type == SessionType.Prepay && snap.CapUzs > 0
+                ? $"{snap.ConsumedUzs:N0} / {snap.CapUzs:N0} UZS"
+                : $"{snap.AmountOrCostUzs:N0} UZS";
+            start = snap.StartUtc.ToLocalTime().ToString("HH:mm:ss");
+
+            if (snap.PlannedEndUtc.HasValue)
+                end = snap.PlannedEndUtc.Value.ToLocalTime().ToString("HH:mm:ss");
+
+            if (snap.Type == SessionType.Prepay)
+                remaining = FormatTimeLeft(snap.RemainingSeconds);
+        }
+
+        return new PcRow
+        {
+            Id = pc.Id,
+            MachineGuid = pc.MachineGuid,
+            IsOnline = pc.IsOnline,
+            Enabled = pc.Enabled,
+            IsManual = pc.IsManual,
+            Number = pc.Number,
+            TariffId = pc.TariffId,
+            State = pc.State,
+            TariffDisplay = pc.TariffId.HasValue ? tariffNames.GetValueOrDefault(pc.TariffId.Value, "") : "",
+            StateDisplay = Strings.PcStateName(pc.State, pc.IsConfigured),
+            SessionTypeDisplay = sessionType,
+            AmountDisplay = amount,
+            StartDisplay = start,
+            EndDisplay = end,
+            RemainingDisplay = remaining,
+            Note = snap?.Note ?? "",
+            ClientMissing = clientMissing,
+            AuthRejected = authRejected,
+            ClientVersion = pc.IsOnline ? ClubHub.GetClientVersion(pc.MachineGuid) : ""
+        };
+    }
+
+    private static string FormatEvent(EventLogEntry e, Dictionary<int, Pc> pcById)
+    {
+        // Many messages ("Postpay session started") don't say where it happened, but the entry knows its PC.
+        // Done here rather than when writing the entry, so the old entries get it too.
+        var message = e.Message;
+        if (e.PcId is { } pcId && pcById.TryGetValue(pcId, out var pc) && !NamesPc(message, pc))
+            message = $"{Strings.PcLabel(pc.Number)}: {message}";
+
+        return $"{e.TimestampUtc.ToLocalTime():HH:mm:ss} [{e.Type}] {message}";
+    }
+
+    /// <summary>Whether the message already says which PC it is about ("PC #5 reconnected", "Moved from PC #3 to PC #5").</summary>
+    private static bool NamesPc(string message, Pc pc) =>
+        pc.Number is { } number && message.Contains($"#{number}");
+
+    // ---- right-click: select the row under the cursor unless it is already part of a multi-selection.
+    // Right-clicking anywhere that isn't a row (empty space, the header) suppresses the context
+    // menu entirely instead of opening it with nothing valid to act on. ----
+
+    private bool _rightClickedCard;
+
+    private void PcList_PreviewMouseRightButtonDown(object sender, System.Windows.Input.MouseButtonEventArgs e)
+    {
+        var card = FindAncestor<ListBoxItem>((DependencyObject)e.OriginalSource);
+        _rightClickedCard = card?.Content is PcRow;
+        if (card?.Content is not PcRow pcRow)
+        {
+            e.Handled = true;
+            return;
+        }
+
+        if (!PcList.SelectedItems.Contains(pcRow))
+        {
+            PcList.SelectedItems.Clear();
+            PcList.SelectedItems.Add(pcRow);
+        }
+    }
+
+    // Handling the mouse-down alone doesn't stop the menu: it opens on mouse-up, so cancel it here.
+    // A negative CursorLeft means it was opened from the keyboard (menu key), which needs a selection.
+    private void PcList_ContextMenuOpening(object sender, ContextMenuEventArgs e)
+    {
+        var fromKeyboard = e.CursorLeft < 0;
+        if (fromKeyboard ? PcList.SelectedItems.Count == 0 : !_rightClickedCard)
+            e.Handled = true;
+    }
+
+    private static T? FindAncestor<T>(DependencyObject? current) where T : DependencyObject
+    {
+        while (current is not null)
+        {
+            if (current is T match)
+                return match;
+            current = VisualTreeHelper.GetParent(current);
+        }
+
+        return null;
+    }
+
+    private static T? FindDescendant<T>(DependencyObject parent) where T : DependencyObject
+    {
+        for (var i = 0; i < VisualTreeHelper.GetChildrenCount(parent); i++)
+        {
+            var child = VisualTreeHelper.GetChild(parent, i);
+            if (child is T match)
+                return match;
+
+            var nested = FindDescendant<T>(child);
+            if (nested is not null)
+                return nested;
+        }
+
+        return null;
+    }
+
+    // ---- keyboard shortcuts (Enter = Start, Delete = Stop) and the selection-count hint ----
+
+    private void PcList_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        var count = PcList.SelectedItems.Count;
+        SelectionCountText.Text = count > 0 ? Strings.Format("SelectionCountFormat", count) : "";
+    }
+
+    // ---- drag-to-select: a plain click selects one card (the list's normal behaviour); pressing a card and
+    // dragging to another selects every card from the first to the last, in list order (like PC 1 to PC 5).
+    // Holding Ctrl while pressing keeps what was already selected, so several groups can be added one by one. ----
+
+    private PcRow? _dragAnchor;
+    private bool _dragging;
+    private HashSet<PcRow> _selectionBeforeDrag = new();
+
+    private void PcList_PreviewMouseLeftButtonDown(object sender, System.Windows.Input.MouseButtonEventArgs e)
+    {
+        _dragging = false;
+        _dragAnchor = FindAncestor<ListBoxItem>((DependencyObject)e.OriginalSource)?.Content as PcRow;
+        if (_dragAnchor is not null)
+            _cursorId = _anchorId = _dragAnchor.Id;
+
+        // A click on empty space (between cards, a section header, the blank area) deselects everything.
+        // Ctrl-click is left alone so a slip while building a multi-selection doesn't wipe it, and the
+        // scrollbar is not "empty space".
+        var onScrollBar = FindAncestor<System.Windows.Controls.Primitives.ScrollBar>((DependencyObject)e.OriginalSource) is not null;
+        if (_dragAnchor is null && !onScrollBar && !System.Windows.Input.Keyboard.Modifiers.HasFlag(System.Windows.Input.ModifierKeys.Control))
+            PcList.SelectedItems.Clear();
+
+        _selectionBeforeDrag = System.Windows.Input.Keyboard.Modifiers.HasFlag(System.Windows.Input.ModifierKeys.Control)
+            ? PcList.SelectedItems.Cast<PcRow>().ToHashSet()
+            : new HashSet<PcRow>();
+    }
+
+    private void PcList_PreviewMouseMove(object sender, System.Windows.Input.MouseEventArgs e)
+    {
+        if (_dragAnchor is null)
+            return;
+
+        if (e.LeftButton != System.Windows.Input.MouseButtonState.Pressed)
+        {
+            EndDrag();
+            return;
+        }
+
+        // The list captures the mouse while it is pressed, so find the card under the pointer by position.
+        var position = e.GetPosition(PcList);
+        var hovered = FindDescendants<ListBoxItem>(PcList)
+            .FirstOrDefault(card => card.TransformToAncestor(PcList).TransformBounds(new Rect(card.RenderSize)).Contains(position))
+            ?.Content as PcRow;
+        if (hovered is null || (!_dragging && hovered == _dragAnchor))
+            return;
+
+        _dragging = true;
+
+        // Stops the list's own drag handling so only this range logic changes the selection.
+        e.Handled = true;
+
+        var cards = PcList.Items.Cast<PcRow>().ToList();
+        var from = cards.IndexOf(_dragAnchor);
+        var to = cards.IndexOf(hovered);
+        if (from < 0 || to < 0)
+            return;
+
+        var wanted = new HashSet<PcRow>(_selectionBeforeDrag);
+        foreach (var row in cards.Skip(Math.Min(from, to)).Take(Math.Abs(from - to) + 1))
+            wanted.Add(row);
+
+        foreach (var row in PcList.SelectedItems.Cast<PcRow>().Where(r => !wanted.Contains(r)).ToList())
+            PcList.SelectedItems.Remove(row);
+        foreach (var row in wanted.Where(r => !PcList.SelectedItems.Contains(r)))
+            PcList.SelectedItems.Add(row);
+    }
+
+    private void PcList_PreviewMouseLeftButtonUp(object sender, System.Windows.Input.MouseButtonEventArgs e) => EndDrag();
+
+    // Double-click on a card = the same as pressing Enter: open the Start window for it. The first click of
+    // the double-click has already selected the card. Ctrl/Shift double-clicks are left alone (multi-select
+    // building), and a double-click on empty space or the scrollbar does nothing.
+    private void PcList_MouseDoubleClick(object sender, System.Windows.Input.MouseButtonEventArgs e)
+    {
+        if (e.ChangedButton != System.Windows.Input.MouseButton.Left)
+            return;
+
+        var modifiers = System.Windows.Input.Keyboard.Modifiers;
+        if (modifiers.HasFlag(System.Windows.Input.ModifierKeys.Control) || modifiers.HasFlag(System.Windows.Input.ModifierKeys.Shift))
+            return;
+
+        if (FindAncestor<ListBoxItem>((DependencyObject)e.OriginalSource)?.Content is not PcRow row)
+            return;
+
+        // Make sure it is exactly this card that Start will act on.
+        if (PcList.SelectedItems.Count != 1 || !PcList.SelectedItems.Contains(row))
+        {
+            PcList.SelectedItems.Clear();
+            PcList.SelectedItems.Add(row);
+        }
+
+        e.Handled = true;
+        OnStart(sender, e);
+    }
+
+    private void EndDrag()
+    {
+        _dragAnchor = null;
+        _dragging = false;
+    }
+
+    private static IEnumerable<T> FindDescendants<T>(DependencyObject parent) where T : DependencyObject
+    {
+        for (var i = 0; i < VisualTreeHelper.GetChildrenCount(parent); i++)
+        {
+            var child = VisualTreeHelper.GetChild(parent, i);
+            if (child is T match)
+                yield return match;
+
+            foreach (var nested in FindDescendants<T>(child))
+                yield return nested;
+        }
+    }
+
+    // Listened to on the whole window (not just the list), so it works whichever control has focus -
+    // otherwise Enter would "click" a toolbar button that was focused by an earlier click.
+    private void Window_PreviewKeyDown(object sender, System.Windows.Input.KeyEventArgs e)
+    {
+        var isArrow = e.Key is System.Windows.Input.Key.Up or System.Windows.Input.Key.Down
+            or System.Windows.Input.Key.Left or System.Windows.Input.Key.Right;
+        if (!isArrow && e.Key is not (System.Windows.Input.Key.Enter or System.Windows.Input.Key.Delete))
+            return;
+
+        // Let real text boxes keep their own Enter/Delete/arrow behaviour.
+        var focused = System.Windows.Input.Keyboard.FocusedElement;
+        if (focused is System.Windows.Controls.Primitives.TextBoxBase or System.Windows.Controls.PasswordBox
+            or System.Windows.Controls.ComboBox)
+            return;
+
+        if (isArrow)
+        {
+            // Arrows inside another list (the event log) just scroll that list.
+            if (focused is DependencyObject d && FindAncestor<ListBox>(d) is { } otherList && otherList != PcList)
+                return;
+
+            e.Handled = true;
+            MoveSelection(e.Key);
+            return;
+        }
+
+        e.Handled = true;
+        if (e.IsRepeat)
+            return;
+
+        if (e.Key == System.Windows.Input.Key.Enter)
+            OnStart(sender, e);
+        else
+            OnStop(sender, e);
+    }
+
+    // ---- arrow keys: move through the cards the way they look on screen.
+    //   Arrow            select only the next card
+    //   Shift + arrow    select every card (in list order) from the starting card to the next one
+    //   Ctrl + arrow     add the next card to what is already selected
+    //   Ctrl+Shift+arrow add that whole range to what is already selected ----
+
+    private int? _cursorId;   // the card the last arrow press landed on
+    private int? _anchorId;   // where a Shift range starts (set by clicks and plain/Ctrl arrows)
+
+    private void MoveSelection(System.Windows.Input.Key key)
+    {
+        var cards = FindDescendants<ListBoxItem>(PcList).Where(c => c.Content is PcRow).ToList();
+        if (cards.Count == 0)
+            return;
+
+        var shift = System.Windows.Input.Keyboard.Modifiers.HasFlag(System.Windows.Input.ModifierKeys.Shift);
+        var ctrl = System.Windows.Input.Keyboard.Modifiers.HasFlag(System.Windows.Input.ModifierKeys.Control);
+
+        // Where we are now: the last card moved to, else the last selected card, else nothing (first press picks the first card).
+        var current = cards.FirstOrDefault(c => ((PcRow)c.Content).Id == _cursorId)
+            ?? cards.LastOrDefault(c => c.IsSelected);
+
+        var target = current is null ? cards[0] : FindNeighbour(cards, current, key);
+        if (target is null)
+            return;
+
+        var targetRow = (PcRow)target.Content;
+        _cursorId = targetRow.Id;
+
+        var wanted = new HashSet<PcRow>();
+        if (ctrl)
+            wanted.UnionWith(PcList.SelectedItems.Cast<PcRow>());
+
+        if (shift)
+        {
+            // Same list-order range as drag-select: the anchor card to the target card.
+            var ordered = PcList.Items.Cast<PcRow>().ToList();
+            var anchor = ordered.FirstOrDefault(r => r.Id == _anchorId) ?? (current?.Content as PcRow) ?? targetRow;
+            _anchorId = anchor.Id;
+            var from = ordered.IndexOf(anchor);
+            var to = ordered.IndexOf(targetRow);
+            foreach (var row in ordered.Skip(Math.Min(from, to)).Take(Math.Abs(from - to) + 1))
+                wanted.Add(row);
+        }
+        else
+        {
+            wanted.Add(targetRow);
+            _anchorId = targetRow.Id;
+        }
+
+        foreach (var row in PcList.SelectedItems.Cast<PcRow>().Where(r => !wanted.Contains(r)).ToList())
+            PcList.SelectedItems.Remove(row);
+        foreach (var row in wanted.Where(r => !PcList.SelectedItems.Contains(r)))
+            PcList.SelectedItems.Add(row);
+
+        target.BringIntoView();
+    }
+
+    /// <summary>The closest card in the pressed direction: nearest along that axis, with sideways drift penalised.</summary>
+    private ListBoxItem? FindNeighbour(List<ListBoxItem> cards, ListBoxItem current, System.Windows.Input.Key key)
+    {
+        Rect BoundsOf(ListBoxItem card) => card.TransformToAncestor(PcList).TransformBounds(new Rect(card.RenderSize));
+
+        var from = BoundsOf(current);
+        ListBoxItem? best = null;
+        var bestScore = double.MaxValue;
+
+        foreach (var card in cards.Where(c => c != current))
+        {
+            var to = BoundsOf(card);
+            double gap, sideways;
+            switch (key)
+            {
+                case System.Windows.Input.Key.Right:
+                    gap = to.Left - from.Right;
+                    sideways = Math.Abs((to.Top + to.Height / 2) - (from.Top + from.Height / 2));
+                    break;
+                case System.Windows.Input.Key.Left:
+                    gap = from.Left - to.Right;
+                    sideways = Math.Abs((to.Top + to.Height / 2) - (from.Top + from.Height / 2));
+                    break;
+                case System.Windows.Input.Key.Down:
+                    gap = to.Top - from.Bottom;
+                    sideways = Math.Abs((to.Left + to.Width / 2) - (from.Left + from.Width / 2));
+                    break;
+                default:
+                    gap = from.Top - to.Bottom;
+                    sideways = Math.Abs((to.Left + to.Width / 2) - (from.Left + from.Width / 2));
+                    break;
+            }
+
+            // Must lie beyond the current card in that direction (a pixel of slack for margins/rounding).
+            if (gap < -1)
+                continue;
+
+            var score = Math.Max(gap, 0) + 2 * sideways;
+            if (score < bestScore)
+            {
+                bestScore = score;
+                best = card;
+            }
+        }
+
+        return best;
+    }
+
+    // ---- toolbar ----
+
+    private PcRow? GetSingleSelectedPc()
+    {
+        var selected = PcList.SelectedItems.Cast<PcRow>().ToList();
+        if (selected.Count == 1)
+            return selected[0];
+
+        MessageBox.Show(Strings.Get("SelectExactlyOnePc"), Strings.Get("ConfirmTitle"), MessageBoxButton.OK, MessageBoxImage.Information);
+        return null;
+    }
+
+    /// <summary>
+    /// Validates the current selection for Start (bulk-start several PCs at once, as long as they all share one tariff - that's what makes "apply the same
+    /// prepay/postpay parameters to each" unambiguous). Shows the relevant error and returns
+    /// null if the selection isn't usable.
+    /// </summary>
+    private List<PcRow>? GetReadySelectionForStart()
+    {
+        var selected = PcList.SelectedItems.Cast<PcRow>().ToList();
+        if (selected.Count == 0)
+        {
+            MessageBox.Show(Strings.Get("SelectAtLeastOnePc"), Strings.Get("ConfirmTitle"),
+                MessageBoxButton.OK, MessageBoxImage.Information);
+            return null;
+        }
+
+        if (selected.Any(p => !p.Number.HasValue || !p.TariffId.HasValue || p.HasActiveSession))
+        {
+            MessageBox.Show(Strings.Get("SelectedNotReadyToStart"), Strings.Get("ConfirmTitle"),
+                MessageBoxButton.OK, MessageBoxImage.Information);
+            return null;
+        }
+
+        if (selected.Select(p => p.TariffId!.Value).Distinct().Count() > 1)
+        {
+            MessageBox.Show(Strings.Get("SelectedMustShareTariff"), Strings.Get("ConfirmTitle"),
+                MessageBoxButton.OK, MessageBoxImage.Information);
+            return null;
+        }
+
+        return selected;
+    }
+
+    private async void OnStart(object sender, RoutedEventArgs e)
+    {
+        var targets = GetReadySelectionForStart();
+        if (targets is null)
+            return;
+
+        var window = new StartSessionWindow(Services, targets) { Owner = this };
+        if (window.ShowDialog() == true)
+            await RefreshAsync();
+    }
+
+    private async void OnMove(object sender, RoutedEventArgs e)
+    {
+        var selected = PcList.SelectedItems.Cast<PcRow>().ToList();
+        if (selected.Count == 2)
+        {
+            await MoveBetweenAsync(selected[0], selected[1]);
+            return;
+        }
+
+        if (selected.Count != 1)
+        {
+            MessageBox.Show(Strings.Get("MoveSelectOneOrTwo"), Strings.Get("ConfirmTitle"), MessageBoxButton.OK, MessageBoxImage.Information);
+            return;
+        }
+
+        var pc = selected[0];
+        if (pc.State is not (PcState.PrepaySession or PcState.PostpaySession))
+        {
+            MessageBox.Show(Strings.Get("MoveOnlyActiveSession"), Strings.Get("ConfirmTitle"),
+                MessageBoxButton.OK, MessageBoxImage.Information);
+            return;
+        }
+
+        var window = new MoveSessionWindow(Services, pc) { Owner = this };
+        if (window.ShowDialog() == true)
+            await RefreshAsync();
+    }
+
+    /// <summary>
+    /// Move with two cards selected: they trade places. If only one of them is running a session it
+    /// moves onto the other (free) one; if both are running, the two sessions swap. Same
+    /// tariff only - SessionService enforces it too, this just gives the admin a clear message first.
+    /// </summary>
+    private async Task MoveBetweenAsync(PcRow a, PcRow b)
+    {
+        if (!a.TariffId.HasValue || a.TariffId != b.TariffId)
+        {
+            MessageBox.Show(Strings.Get("MoveSameTariffOnly"), Strings.Get("ConfirmTitle"), MessageBoxButton.OK, MessageBoxImage.Information);
+            return;
+        }
+
+        static bool Running(PcRow p) => p.State is PcState.PrepaySession or PcState.PostpaySession;
+        if (!Running(a) && !Running(b))
+        {
+            MessageBox.Show(Strings.Get("MoveOnlyActiveSession"), Strings.Get("ConfirmTitle"), MessageBoxButton.OK, MessageBoxImage.Information);
+            return;
+        }
+
+        try
+        {
+            using var scope = Services.CreateScope();
+            var sessionService = scope.ServiceProvider.GetRequiredService<SessionService>();
+            if (Running(a) && Running(b))
+                await sessionService.SwapSessionsAsync(a.MachineGuid, b.MachineGuid);
+            else if (Running(a))
+                await sessionService.MoveSessionAsync(a.MachineGuid, b.MachineGuid);
+            else
+                await sessionService.MoveSessionAsync(b.MachineGuid, a.MachineGuid);
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show(ex.Message, Strings.Get("ConfirmTitle"), MessageBoxButton.OK, MessageBoxImage.Warning);
+        }
+
+        await RefreshAsync();
+    }
+
+    /// <summary>
+    /// Validates the current selection for Stop (stop several PCs at
+    /// once, e.g. a group finishing together). All selected must have an active session, and all
+    /// must be the same kind of session - prepay (confirm, shows the refund) and postpay/limit-
+    /// reached (payment collection) use different flows, so mixing them in one action isn't
+    /// well-defined.
+    /// </summary>
+    private List<PcRow>? GetReadySelectionForStop()
+    {
+        var selected = PcList.SelectedItems.Cast<PcRow>().ToList();
+        if (selected.Count == 0)
+        {
+            MessageBox.Show(Strings.Get("SelectAtLeastOnePc"), Strings.Get("ConfirmTitle"),
+                MessageBoxButton.OK, MessageBoxImage.Information);
+            return null;
+        }
+
+        if (selected.Any(p => !p.HasActiveSession))
+        {
+            MessageBox.Show(Strings.Get("PcHasNoActiveSession"), Strings.Get("ConfirmTitle"),
+                MessageBoxButton.OK, MessageBoxImage.Information);
+            return null;
+        }
+
+        var isPrepayGroup = selected[0].State == PcState.PrepaySession;
+        if (selected.Any(p => (p.State == PcState.PrepaySession) != isPrepayGroup))
+        {
+            MessageBox.Show(Strings.Get("SelectedMustShareSessionType"), Strings.Get("ConfirmTitle"),
+                MessageBoxButton.OK, MessageBoxImage.Information);
+            return null;
+        }
+
+        return selected;
+    }
+
+    private async void OnStop(object sender, RoutedEventArgs e)
+    {
+        var targets = GetReadySelectionForStop();
+        if (targets is null)
+            return;
+
+        if (targets[0].State == PcState.PrepaySession)
+        {
+            using var scope = Services.CreateScope();
+            var sessionService = scope.ServiceProvider.GetRequiredService<SessionService>();
+
+            var (lines, totalMoney) = await BuildStopPrepayLinesAsync(sessionService, targets);
+            if (new StopPrepayWindow(lines, totalMoney) { Owner = this }.ShowDialog() != true)
+                return;
+
+            var failures = new List<string>();
+
+            foreach (var target in targets)
+            {
+                try
+                {
+                    await sessionService.EndSessionEarlyAsync(target.MachineGuid);
+                }
+                catch (Exception ex)
+                {
+                    failures.Add($"#{target.Number}: {ex.Message}");
+                }
+            }
+
+            if (failures.Count > 0)
+                MessageBox.Show(string.Join("\n", failures), Strings.Get("CannotStopSessionTitle"), MessageBoxButton.OK, MessageBoxImage.Warning);
+        }
+        else
+        {
+            var window = new PostpayPaymentWindow(Services, targets) { Owner = this };
+            window.ShowDialog();
+        }
+
+        await RefreshAsync();
+    }
+
+    /// <summary>
+    /// What the stop dialog shows for prepay: for each PC, how much of its prepaid money is still unused
+    /// and how much time that is, plus the total. Only the time used is recorded as income; the rest is handed back.
+    /// </summary>
+    private static async Task<(List<StopPrepayLine> Lines, string TotalMoney)> BuildStopPrepayLinesAsync(
+        SessionService sessionService, List<PcRow> targets)
+    {
+        var lines = new List<StopPrepayLine>();
+        var totalUzs = 0;
+
+        foreach (var target in targets)
+        {
+            var snapshot = await sessionService.GetActiveSessionSnapshotAsync(target.MachineGuid);
+            if (snapshot is null)
+                continue;
+
+            totalUzs += snapshot.RemainingMoneyUzs;
+            lines.Add(new StopPrepayLine(
+                target.Label,
+                $"{snapshot.RemainingMoneyUzs:N0} UZS",
+                $"{Strings.Get("ColumnRemaining")}: {FormatTimeLeft(snapshot.RemainingSeconds)}",
+                Strings.Get("StopPrepayUnused"),
+                Strings.Format("StopStartedFormat", TimeText.StartedAt(snapshot.StartUtc), TimeText.Duration(DateTime.UtcNow - snapshot.StartUtc))));
+        }
+
+        return (lines, $"{totalUzs:N0} UZS");
+    }
+
+    /// <summary>mm:ss under an hour, h:mm:ss from an hour up (a plain mm:ss would show 90 minutes as 30:00).</summary>
+    private static string FormatTimeLeft(int seconds)
+    {
+        var left = TimeSpan.FromSeconds(Math.Max(0, seconds));
+        return left.TotalHours >= 1 ? left.ToString(@"h\:mm\:ss") : left.ToString(@"mm\:ss");
+    }
+
+    // ---- power control ----
+
+    private async void OnTurnOn(object sender, RoutedEventArgs e) =>
+        await RunPowerActionAsync((power, pcs) => power.TurnOnAsync(pcs), checkActiveSessions: false);
+
+    private async void OnRestart(object sender, RoutedEventArgs e) =>
+        await RunPowerActionAsync((power, pcs) => power.RestartAsync(pcs), checkActiveSessions: true);
+
+    private async void OnShutDown(object sender, RoutedEventArgs e) =>
+        await RunPowerActionAsync((power, pcs) => power.ShutdownAsync(pcs), checkActiveSessions: true);
+
+    private async Task RunPowerActionAsync(Func<PowerService, List<Pc>, Task<int>> action, bool checkActiveSessions)
+    {
+        var selected = PcList.SelectedItems.Cast<PcRow>().ToList();
+        List<PcRow> targets;
+
+        if (selected.Count == 0)
+        {
+            if (MessageBox.Show(Strings.Get("NoPcsSelectedConfirmAll"), Strings.Get("ConfirmTitle"),
+                    MessageBoxButton.YesNo, MessageBoxImage.Question) != MessageBoxResult.Yes)
+                return;
+
+            targets = PcList.ItemsSource.Cast<PcRow>().Where(p => p.Enabled).ToList();
+        }
+        else
+        {
+            targets = selected;
+        }
+
+        if (checkActiveSessions && targets.Any(p => p.HasActiveSession))
+        {
+            if (MessageBox.Show(Strings.Get("SelectedHaveActiveSessionConfirm"), Strings.Get("ConfirmTitle"),
+                    MessageBoxButton.YesNo, MessageBoxImage.Warning) != MessageBoxResult.Yes)
+                return;
+        }
+
+        using var scope = Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<ClubDbContext>();
+        var power = scope.ServiceProvider.GetRequiredService<PowerService>();
+
+        var ids = targets.Select(p => p.Id).ToHashSet();
+        var pcs = await db.Pcs.Where(p => ids.Contains(p.Id)).ToListAsync();
+
+        var sent = await action(power, pcs);
+        if (sent == 0)
+            MessageBox.Show(Strings.Get("NoEligiblePcs"), Strings.Get("ConfirmTitle"), MessageBoxButton.OK, MessageBoxImage.Information);
+
+        await RefreshAsync();
+    }
+
+    private async void OnSettings(object sender, RoutedEventArgs e)
+    {
+        var window = new SettingsWindow(Services) { Owner = this };
+        if (window.ShowDialog() == true)
+            await RefreshAsync();
+    }
+
+    private void OnReports(object sender, RoutedEventArgs e)
+    {
+        var window = new ReportsWindow(Services) { Owner = this };
+        window.ShowDialog();
+    }
+}

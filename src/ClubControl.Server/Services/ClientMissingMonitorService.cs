@@ -61,13 +61,14 @@ public class ClientMissingMonitorService : BackgroundService
         using var scope = _scopeFactory.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<ClubDbContext>();
         var rejections = scope.ServiceProvider.GetRequiredService<AuthRejectionTracker>();
+        var updates = scope.ServiceProvider.GetRequiredService<ClientUpdateTracker>();
 
         var now = DateTime.UtcNow;
         var pcs = await db.Pcs.AsNoTracking() // read only: nothing here changes a PC row
             .Where(p => !p.IsManual && p.Enabled && p.Number != null)
             .ToListAsync();
 
-        var due = pcs.Where(pc => ShouldCheck(pc, rejections, now)).ToList();
+        var due = pcs.Where(pc => ShouldCheck(pc, updates, rejections, now)).ToList();
         if (due.Count > 0)
         {
             var answers = await Task.WhenAll(due.Select(pc => PcPowerProbe.IsPoweredOnAsync(pc.IpAddress, pc.MacAddress)));
@@ -90,7 +91,7 @@ public class ClientMissingMonitorService : BackgroundService
             await db.SaveChangesAsync();
     }
 
-    private bool ShouldCheck(Pc pc, AuthRejectionTracker rejections, DateTime now)
+    private bool ShouldCheck(Pc pc, ClientUpdateTracker updates, AuthRejectionTracker rejections, DateTime now)
     {
         // A rejected client is running, it just is not let in: "client missing" would be the wrong diagnosis.
         if (pc.IsOnline || rejections.IsRejected(pc.MachineGuid, now))
@@ -98,6 +99,10 @@ public class ClientMissingMonitorService : BackgroundService
             _tracker.Forget(pc.MachineGuid);
             return false;
         }
+
+        // "Update client" restarts the client on purpose: that gap is not a missing client.
+        if (updates.Get(pc.MachineGuid, now)?.Status is ClientUpdateStatus.Waiting or ClientUpdateStatus.Updating)
+            return false;
 
         var offlineSince = pc.LastHeartbeatUtc > _startedUtc ? pc.LastHeartbeatUtc : _startedUtc;
         return _tracker.ShouldProbe(pc.MachineGuid, offlineSince, now);

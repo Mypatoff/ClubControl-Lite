@@ -3,7 +3,7 @@
 The small version of ClubControl: computer club PC lock and billing system for Windows 11, inspired by GameClass 3 but much simpler.
 One club, one admin laptop (server), up to ~30 gaming PCs (clients) on the same local network.
 
-**What Lite does not have** (the full ClubControl does): the Bar (shop), session items, named "Other" resources (billiards, PS5 rooms), "Update client" / "Update server" from the admin panel, the light theme. Lite is a separate product: its own ports, data folder, installer and firewall rules, so it can sit next to the full version without touching it.
+**What Lite does not have** (the full ClubControl does): the Bar (shop), session items, named "Other" resources (billiards, PS5 rooms), the light theme. Lite is a separate product: its own ports, data folder, installer and firewall rules, so it can sit next to the full version without touching it.
 
 ## 1. Architecture
 
@@ -59,7 +59,7 @@ One club, one admin laptop (server), up to ~30 gaming PCs (clients) on the same 
 - **Sessions while the server is unreachable:** the PC keeps running the session on its own clock. Prepay counts down and, at 00:00, the PC ends the session exactly as the server would (after-session action, then lock). Postpay keeps growing the cost with the same billing math as the server (`BillingCalculator.PostpayCostWithOpenSegment`) and, at the tariff maximum, locks as "Limit reached". While the server is reachable none of this locking happens on the client - the server stays the only one that ends sessions.
 - When the server comes back to a PC it considered offline, it sends the PC's current state (so a manually unlocked PC is locked again, or continues its session). No warning message.
 
-**Commands from server:** Lock, Unlock, StartSession, UpdateSession, EndSession, Shutdown, Restart, ApplySettings, ProvisionToken.
+**Commands from server:** Lock, Unlock, StartSession, UpdateSession, EndSession, Shutdown, Restart, ApplySettings, ProvisionToken, UpdateClient (signed per PC; see README "Updating the client").
 
 **After session ends:** depending on settings, either (a) close processes whose names are in a configurable list (e.g. steam.exe, game exes), or (b) restart the PC. Then lock.
 
@@ -125,4 +125,4 @@ One club, one admin laptop (server), up to ~30 gaming PCs (clients) on the same 
 
 ## 11. Out of scope
 
-Packages and night tariffs, messages to PCs, call-admin button, customer accounts, bookings, snacks/bar, Telegram reports, game launcher, auto-update.
+Packages and night tariffs, messages to PCs, call-admin button, customer accounts, bookings, snacks/bar, Telegram reports, game launcher, automatic (unattended) updates - updating is always started by the admin.

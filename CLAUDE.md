@@ -5,8 +5,8 @@ A separate product from the full ClubControl (own ports 5060/5061, data folder `
 startup task and firewall rules) - never share any of those with the full version.
 
 ## What Lite is not
-No Bar (shop), no session items, no named "Other" resources, no "Update client" / "Update server" in the panel, no light theme,
-no free sessions. Do not add them back here; they live in the full ClubControl.
+No Bar (shop), no session items, no named "Other" resources, no light theme, no free sessions. Do not add them back here;
+they live in the full ClubControl. (Update client / Update server were removed at the fork and added back on 2026-11-25, see Progress.)
 
 ## Stack
 C# .NET 8. WPF for Server (admin panel + hosted ASP.NET Core/SignalR) and Client. SQLite + EF Core. xUnit tests.
@@ -49,6 +49,19 @@ C# .NET 8. WPF for Server (admin panel + hosted ASP.NET Core/SignalR) and Client
 - [x] Fresh database history: one `InitialCreate` migration (no upgrade path from a full ClubControl `club.db`; different data folder on purpose).
 - [x] Own identity: ports 5060/5061, discovery text `CLUBCONTROLLITE_*`, `%ProgramData%\ClubControlLite`, mutexes, Run key,
       startup task "ClubControl Lite Client", firewall rules "ClubControl Lite ...", installer `ClubControlLite-Setup.exe` with its own AppId.
+- [x] Added back (2026-11-25), copied from the full ClubControl and renamed for Lite: "Update client" (`CommandType.UpdateClient`,
+      `PowerService.UpdateClientAsync`, `ClientUpdater`, `ClientUpdateTracker`, `ClientUpdateFile`, signed per PC with `ClientUpdateAuth`) and
+      "Update server" (`ServerUpdateWindow`, `ServerUpdater`, `ServerUpdateRelease`, `LoginMode.VerifyForUpdate`); both swap files with the
+      PowerShell script from `ClientUpdateScript`, which rolls back if the new build writes no health marker
+      (`%ProgramData%\ClubControlLite\client-healthy.flag` / `server-healthy.flag`). "Update server" reads the rolling `latest` release of
+      `Mypatoff/ClubControl-Lite` (public repo, no token) and checks `ClubControlLite-Server-win-x64.zip` / `ClubControlLite-Client-win-x64.zip`
+      against `SHA256SUMS.txt`, which `build.yml` now publishes. Not copied: `StartupTaskRepair` (a repair for tasks of old full installs; Lite has none).
+      Names that must stay different from the full version: the update zip `ClubControlLite.Client.zip`, the temp folders `ClubControlLite.*.Update`,
+      the User-Agent, the GitHub URLs. Covered by `ClientUpdateScriptTests`, `ClientUpdateAuthTests`, `ServerUpdateReleaseTests` (Tests) and
+      `ClientUpdateFileTests`, `ClientUpdateTrackerTests` (Server.Tests). Not exercised end to end: needs two builds and a real release.
+- [x] The client never shows a price (as in the full ClubControl 1.1.6): the lock screen shows the tariff's name only and the timer shows only the
+      time. The numbers are still sent to the client because the offline cost-limit lock needs them.
+- [x] Client timer (as in the full ClubControl 1.1.9 / 1.1.10): small, faint, click-through, never takes focus, hides while a full-screen program is in front.
 - [ ] Not yet run on real hardware. Verified only by: compile-check of Server + Client with XAML stubs, Server.Tests (113) and Tests (180)
       on Linux, XAML well-formedness / handler / resource-key checks. Click through the main panel, Settings (incl. the new shift
       field), Reports, Add offline PC, Start/Stop/Move on Windows before relying on it; then the first real-club test.

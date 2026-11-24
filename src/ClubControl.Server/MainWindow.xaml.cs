@@ -198,6 +198,8 @@ public partial class MainWindow : Window
         SetToolbarLabel(TurnOnButton, "⚡", Strings.Get("ToolbarTurnOn"));
         SetToolbarLabel(RestartButton, "🔁", Strings.Get("ToolbarRestart"));
         SetToolbarLabel(ShutDownButton, "⏻", Strings.Get("ToolbarShutDown"));
+        SetToolbarLabel(UpdateClientButton, "⬇", Strings.Get("ToolbarUpdateClient"));
+        SetToolbarLabel(UpdateServerButton, "⬆", Strings.Get("ToolbarUpdateServer"));
         SetToolbarLabel(SettingsButton, "⚙", Strings.Get("ToolbarSettings"));
         SetToolbarLabel(ReportsButton, "📊", Strings.Get("ToolbarReports"));
 
@@ -207,6 +209,7 @@ public partial class MainWindow : Window
         CtxTurnOn.Header = Strings.Get("ToolbarTurnOn");
         CtxRestart.Header = Strings.Get("ToolbarRestart");
         CtxShutDown.Header = Strings.Get("ToolbarShutDown");
+        CtxUpdateClient.Header = Strings.Get("ToolbarUpdateClient");
         CtxReports.Header = "📊 " + Strings.Get("ToolbarReports");
 
         EventLogHeaderText.Text = Strings.Get("EventLogHeader");
@@ -310,9 +313,10 @@ public partial class MainWindow : Window
         var pcs = data.Pcs.Where(p => p.Enabled || snapshots.ContainsKey(p.Id)).ToList();
 
         var selectedIds = PcList.SelectedItems.Cast<PcRow>().Select(p => p.Id).ToHashSet();
+        var updates = services.GetRequiredService<ClientUpdateTracker>();
         var clientMissing = services.GetRequiredService<ClientMissingTracker>();
         var rejections = services.GetRequiredService<AuthRejectionTracker>();
-        var rows = pcs.Select(pc => BuildRow(pc, data.TariffNames, snapshots.GetValueOrDefault(pc.Id),
+        var rows = pcs.Select(pc => BuildRow(pc, data.TariffNames, snapshots.GetValueOrDefault(pc.Id), updates.Get(pc.MachineGuid, DateTime.UtcNow),
             clientMissing.IsMissing(pc.MachineGuid), rejections.IsRejected(pc.MachineGuid, DateTime.UtcNow))).ToList();
 
         // The same cards in the same order (the usual case, every second): the cards on screen just take the new
@@ -448,7 +452,7 @@ public partial class MainWindow : Window
         await RefreshAsync();
     }
 
-    private static PcRow BuildRow(Pc pc,Dictionary<int, string> tariffNames, SessionService.ActiveSessionSnapshot? snap, bool clientMissing, bool authRejected)
+    private static PcRow BuildRow(Pc pc,Dictionary<int, string> tariffNames, SessionService.ActiveSessionSnapshot? snap, ClientUpdateInfo? update, bool clientMissing, bool authRejected)
     {
         var amount = "";
         var start = "";
@@ -494,6 +498,7 @@ public partial class MainWindow : Window
             EndDisplay = end,
             RemainingDisplay = remaining,
             Note = snap?.Note ?? "",
+            Update = update,
             ClientMissing = clientMissing,
             AuthRejected = authRejected,
             ClientVersion = pc.IsOnline ? ClubHub.GetClientVersion(pc.MachineGuid) : ""
@@ -1082,6 +1087,12 @@ public partial class MainWindow : Window
 
     private async void OnShutDown(object sender, RoutedEventArgs e) =>
         await RunPowerActionAsync((power, pcs) => power.ShutdownAsync(pcs), checkActiveSessions: true);
+
+    private async void OnUpdateClient(object sender, RoutedEventArgs e) =>
+        await RunPowerActionAsync((power, pcs) => power.UpdateClientAsync(pcs), checkActiveSessions: true);
+
+    private void OnUpdateServer(object sender, RoutedEventArgs e) =>
+        new ServerUpdateWindow { Owner = this }.ShowDialog();
 
     private async Task RunPowerActionAsync(Func<PowerService, List<Pc>, Task<int>> action, bool checkActiveSessions)
     {

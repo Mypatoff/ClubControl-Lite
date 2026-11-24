@@ -48,6 +48,7 @@ public class PcRow : INotifyPropertyChanged
         if (StartDisplay != fresh.StartDisplay) { StartDisplay = fresh.StartDisplay; otherChanged = true; }
         if (EndDisplay != fresh.EndDisplay) { EndDisplay = fresh.EndDisplay; otherChanged = true; }
         if (ClientVersion != fresh.ClientVersion) { ClientVersion = fresh.ClientVersion; otherChanged = true; }
+        if (!Equals(Update, fresh.Update)) { Update = fresh.Update; otherChanged = true; }
         if (AuthRejected != fresh.AuthRejected) { AuthRejected = fresh.AuthRejected; otherChanged = true; }
         if (ClientMissing != fresh.ClientMissing) { ClientMissing = fresh.ClientMissing; otherChanged = true; }
         if (Note != fresh.Note) { Note = fresh.Note; otherChanged = true; }
@@ -84,6 +85,9 @@ public class PcRow : INotifyPropertyChanged
     /// <summary>Client build this PC last reported ("1.0.0+f4545fa"); empty if unknown. Lets the admin see which build each PC runs.</summary>
     public string ClientVersion { get; set; } = "";
 
+    /// <summary>Progress / result of the last "Update client" on this PC; null when there is nothing to show.</summary>
+    public ClientUpdateInfo? Update { get; set; }
+
     /// <summary>The client on this PC keeps connecting but the server rejects its token (see <see cref="Services.AuthRejectionTracker"/>).</summary>
     public bool AuthRejected { get; set; }
 
@@ -95,10 +99,21 @@ public class PcRow : INotifyPropertyChanged
     /// <summary>A networked PC that is on but whose client was deleted, uninstalled or closed: not the same as switched off.</summary>
     public bool IsClientMissing => IsOffline && ClientMissing;
 
-    /// <summary>The state text on the card: "Auth failed" or "No client" when that is the problem, otherwise the normal state.</summary>
-    public string CardStateDisplay => IsAuthRejected ? Strings.Get("AuthRejectedCard")
+    /// <summary>The state text on the card: the update progress or result while there is one, then "Auth failed" or "No client" when that is the problem, otherwise the normal state.</summary>
+    public string CardStateDisplay => Update is not null ? UpdateDisplay
+        : IsAuthRejected ? Strings.Get("AuthRejectedCard")
         : IsClientMissing ? Strings.Get("ClientMissingCard")
         : StateDisplay;
+
+    private string UpdateDisplay => Update?.Status switch
+    {
+        ClientUpdateStatus.Waiting => Strings.Get("UpdateCardWaiting"),
+        ClientUpdateStatus.Updating => Strings.Get("UpdateCardUpdating"),
+        ClientUpdateStatus.Updated => Strings.Get("UpdateCardUpdated"),
+        ClientUpdateStatus.Unchanged => Strings.Get("UpdateCardSame"),
+        ClientUpdateStatus.NoResponse => Strings.Get("UpdateCardFailed"),
+        _ => ""
+    };
 
     /// <summary>The optional note typed when the current session was started; empty if none.</summary>
     public string Note { get; set; } = "";
@@ -127,6 +142,7 @@ public class PcRow : INotifyPropertyChanged
     /// <summary>Everything the compact card leaves out (tariff, amount, start/end), shown on hover.</summary>
     public string TooltipText => string.Join("\n", new[]
     {
+        Update is null ? "" : UpdateDisplay + (Update.Status == ClientUpdateStatus.Updated ? $" (v{Update.VersionBefore} → v{Update.VersionNow})" : ""),
         IsAuthRejected ? Strings.Get("AuthRejectedTooltip") : "",
         IsClientMissing ? Strings.Get("ClientMissingTooltip") : "",
         StateDisplay, // the card is narrow, so a long state name ("Лимит достигнут") can be cut off there

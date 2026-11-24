@@ -12,7 +12,7 @@ namespace ClubControl.Server.Tests;
 public static class HubFakes
 {
     public static ClubHub Hub(ClubDbContext db, SessionService sessions, HeartbeatTracker heartbeats) =>
-        new(db, sessions, new AuthRejectionTracker(), heartbeats)
+        new(db, sessions, new ClientUpdateTracker(), new AuthRejectionTracker(), heartbeats)
         {
             Context = new FakeCallerContext(),
             Clients = new FakeClients(),

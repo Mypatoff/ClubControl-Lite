@@ -9,11 +9,13 @@ One admin laptop runs **ClubControl.Server** (server + admin panel). Every gamin
 **What Lite has:** PC lock screen and session timer, prepay and postpay sessions, tariffs, working
 shifts (with an automatic close hour), Move/swap a session, power control (Turn on by Wake-on-LAN,
 Restart, Shut down), offline PCs added by hand, reports (Shift / Day / Week / Month, CSV export),
-daily database backup, three languages (Russian, Uzbek, English on the lock screen), dark theme.
+daily database backup, three languages (Russian, Uzbek, English on the lock screen), dark theme,
+and updating the server and the gaming PCs from the admin panel ("Update server" / "Update client",
+see below). The gaming PCs never show a price: the lock screen shows the tariff's name only and the
+timer shows only the time.
 
 **What Lite does not have** (the full ClubControl does): the Bar (shop), items added to a session,
-named "Other" resources (billiards, PS5 rooms), "Update client" / "Update server" from the admin
-panel, the light theme. To update Lite, run a newer setup file (see below).
+named "Other" resources (billiards, PS5 rooms), the light theme.
 
 Lite is a **separate product** and never touches a full ClubControl on the same PC or network:
 its own ports (TCP **5060**, UDP **5061**), its own discovery message, data folder
@@ -37,8 +39,9 @@ Administrator rights once.
      (see "Configure Windows auto-logon" below), creates the "ClubControl Lite Client" startup task
      for that account and starts it.
 2. The per-PC Windows settings below (Wake-on-LAN, Fast Startup, auto-logon) are still done by hand.
-3. **To update**, run a newer `ClubControlLite-Setup.exe` over the old install with the same type
-   (do the server first, then every client). It stops the running program first and keeps the database.
+3. **To update**, use "Update server" and "Update client" in the admin panel (see below), or run a newer
+   `ClubControlLite-Setup.exe` over the old install with the same type (do the server first, then every
+   client). The setup stops the running program first and keeps the database.
 4. Uninstall from Windows "Apps & features". It removes the program, the startup task and the
    firewall rules and **leaves `%ProgramData%\ClubControlLite` (database, backups, logs) untouched**.
 
@@ -66,6 +69,71 @@ Copy `publish/server` to the admin laptop and `publish/client` to every gaming P
 `install-server.bat` / `install-client.bat`) are not part of a local publish output - copy them next
 to the matching `.exe` before running them. They do what the setup does (firewall rules, startup entry /
 startup task).
+
+## Updating the server ("Update server" in the admin panel)
+
+Once a server runs a build that has this button, you never need to reinstall it by hand again:
+
+1. Click **⬆ Update server** (top right). It asks GitHub for the newest build (the "latest" release that
+   every push to `main` produces) and shows the installed and the newest version.
+2. Click **Download and update** and enter the admin password. It downloads the server zip and the client
+   zip, checks both against the published `SHA256SUMS.txt` (a download that does not match is thrown
+   away), and **replaces the client update file** (`ClientUpdate\ClubControlLite.Client.zip` in the server's
+   own folder, see "Updating the client" below) with the new client zip. Then the server closes, swaps its
+   own files and starts again by itself in about 30 seconds. Log in again.
+3. To update the gaming PCs afterwards, select them and use "Update client" as described below - the zip is
+   already in place.
+
+Good to know:
+- The gaming PCs keep running their sessions while the server restarts and reconnect by themselves.
+- The old server files are backed up first. If the new server does not come up (it writes
+  `%ProgramData%\ClubControlLite\server-healthy.flag` once it has started) within 90 seconds, the old build
+  is put back, together with the database as it was before the update.
+- It only works when the server runs from a folder your Windows user can write to: the setup's
+  `C:\ClubControlLite\Server`, or the unzipped `ClubControlLite-Server-win-x64` folder. A server in
+  `C:\Program Files` needs administrator rights: use the "Open download page" button and run
+  `ClubControlLite-Setup.exe` again instead.
+- The server needs internet access for this. Anyone who can push to the GitHub repository can ship a build
+  this way, so keep the repository's access limited.
+- The first time, a server that was installed before this button existed still has to be updated by hand
+  (run the newer `ClubControlLite-Setup.exe`).
+
+## Updating the client ("Update client" in the admin panel)
+
+After the first install, you do not need to walk to every PC again for a client-side change:
+
+1. Get the newest client zip onto the server. "Update server" does this for you. By hand: publish the client
+   as in "Building without the setup" (self-contained), zip the **contents** of `publish/client` (not the
+   folder itself - `ClubControl.Client.exe` must be at the top level of the zip) and save it as
+   `ClubControlLite.Client.zip` in the `ClientUpdate` folder **inside the server's own folder** (for example
+   `C:\ClubControlLite\Server\ClientUpdate\ClubControlLite.Client.zip`; create the folder if it is not there).
+   (A server in a protected folder such as Program Files cannot write there and uses
+   `%ProgramData%\ClubControlLite\ClientUpdate\ClubControlLite.Client.zip`; if both exist the newer file is used.)
+2. In the admin panel, select the PC(s) to update (or none, to update every enabled PC) and click
+   "Update client" (or right-click > "Update client"). Each selected online PC downloads the zip
+   from the server, swaps its own files, and restarts itself.
+
+Only online PCs receive the command, same as Shutdown/Restart. Roll out to one or two PCs first and confirm
+they come back up correctly before updating the rest - "Update client" always sends whatever is currently
+zipped at that path.
+
+Safety nets:
+- **Signed:** the server signs the zip's hash for each PC with that PC's own token, and the PC refuses
+  anything that doesn't match. A PC that was never configured (no token yet) is skipped.
+- **Rollback:** the old files are backed up first. If the new build doesn't get a heartbeat through to the
+  server within 90 seconds, the PC restores the old build and starts it again.
+- **Version:** hover over a PC card to see the build it runs (`v1.0.0+<git commit>`).
+- **One PC at a time:** with several PCs selected the server sends the command to one PC every 8 seconds,
+  because every PC downloads the whole zip (about 65 MB) from the server and many downloads at once overload
+  its network. PCs still waiting show "⏳ Waiting". A failed download is retried up to 3 times by the PC.
+- **Result on the card and in the log:** each PC's card says "⬇ Updating" (or "⏳ Waiting" until its turn),
+  then, on the card and as a line in the event log:
+  - "✔ Updated" - the PC now runs a new version (the card text fades after 2 minutes).
+  - "⚠ Same version" - the PC restarted but still reports the same version: it already had that build, or
+    the update was rolled back.
+  - "✖ Update failed" - nothing happened within 5 minutes. The card keeps this until the PC is updated
+    again or changes version. The reason is in `%ProgramData%\ClubControlLite\client-log.txt` on that PC.
+  This is judged by the server from what each PC reports, and forgotten when the server restarts.
 
 ## One-time setup per PC
 

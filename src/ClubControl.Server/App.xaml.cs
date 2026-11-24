@@ -189,6 +189,7 @@ public partial class App : Application
         ShutdownMode = ShutdownMode.OnExplicitShutdown;
 
         Directory.CreateDirectory(DbPaths.DataDirectory);
+        _ = ClientUpdateFile.StagePath; // makes sure the folder for the client update zip exists (next to the server, or the old place)
 
         var builder = WebApplication.CreateBuilder();
         builder.WebHost.UseUrls($"http://0.0.0.0:{NetworkConstants.SignalRPort}");
@@ -202,6 +203,7 @@ public partial class App : Application
         // the caller.
         builder.Services.AddSignalR(options => options.EnableDetailedErrors = builder.Environment.IsDevelopment());
         builder.Services.AddScoped<SessionService>();
+        builder.Services.AddSingleton<ClientUpdateTracker>();
         builder.Services.AddSingleton<ClientMissingTracker>();
         builder.Services.AddSingleton<AuthRejectionTracker>();
         builder.Services.AddSingleton<HeartbeatTracker>();
@@ -215,6 +217,13 @@ public partial class App : Application
 
         _host = builder.Build();
         _host.MapHub<ClubHub>(NetworkConstants.HubRoute);
+
+        // Plain HTTP download for "Update client" (PowerService.UpdateClientAsync) - see
+        // ClientUpdateFile for where the admin stages the build this serves.
+        _host.MapGet(NetworkConstants.ClientUpdateRoute, () =>
+            File.Exists(ClientUpdateFile.FilePath)
+                ? Results.File(ClientUpdateFile.FilePath, "application/zip")
+                : Results.NotFound());
 
         if (!EnsureHealthyDatabase())
         {
@@ -255,6 +264,17 @@ public partial class App : Application
 
             var sessionService = scope.ServiceProvider.GetRequiredService<SessionService>();
             await sessionService.RestoreActiveSessionsAsync();
+        }
+
+        // Database upgraded and sessions restored: this build is up. "Update server" waits for this file
+        // before it keeps the new build (and puts the old one back if it never shows up).
+        try
+        {
+            File.WriteAllText(ServerUpdateRelease.HealthMarkerPath, DateTime.UtcNow.ToString("O"));
+        }
+        catch (Exception)
+        {
+            // Only matters during an update, and then the old build is simply restored.
         }
 
         // Best-effort (SPEC section 1/2): needs no elevation for the Run key, but firewall rules
@@ -356,7 +376,7 @@ public partial class App : Application
             Shutdown();
     }
 
-    /// <summary>Asks for the admin password before something that closes the server (tray Exit).</summary>
+    /// <summary>Asks for the admin password before something that closes or replaces the server (tray Exit, Update server).</summary>
     public async Task<bool> VerifyAdminPasswordAsync(Window? owner, LoginMode mode)
     {
         using var scope = _host!.Services.CreateScope();

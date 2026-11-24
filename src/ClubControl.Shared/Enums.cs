@@ -70,5 +70,6 @@ public enum CommandType
     Shutdown,
     Restart,
     ApplySettings,
-    ProvisionToken
+    ProvisionToken,
+    UpdateClient
 }

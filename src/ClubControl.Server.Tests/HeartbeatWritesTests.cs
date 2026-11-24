@@ -72,7 +72,7 @@ public class HeartbeatWritesTests : SessionTestBase
         heartbeats.Record(Pc1, T0.AddSeconds(-3)); // the hub heard it 3 seconds ago
 
         using var db = NewDb();
-        await OfflineMonitorService.CheckAsync(db, heartbeats, T0);
+        await OfflineMonitorService.CheckAsync(db, heartbeats, new ClientUpdateTracker(), T0);
 
         Assert.True((await GetPcAsync(Pc1)).IsOnline);
     }
@@ -85,7 +85,7 @@ public class HeartbeatWritesTests : SessionTestBase
         heartbeats.Record(Pc1, T0.AddSeconds(-40)); // last heard 40 s ago, the saved time is 5 minutes old
 
         using (var db = NewDb())
-            await OfflineMonitorService.CheckAsync(db, heartbeats, T0);
+            await OfflineMonitorService.CheckAsync(db, heartbeats, new ClientUpdateTracker(), T0);
 
         var pc = await GetPcAsync(Pc1);
         Assert.False(pc.IsOnline);
@@ -101,7 +101,7 @@ public class HeartbeatWritesTests : SessionTestBase
         await SetOnlineAsync(Pc1, savedHeartbeat: T0.AddSeconds(-40));
 
         using var db = NewDb();
-        await OfflineMonitorService.CheckAsync(db, new HeartbeatTracker(), T0);
+        await OfflineMonitorService.CheckAsync(db, new HeartbeatTracker(), new ClientUpdateTracker(), T0);
 
         Assert.False((await GetPcAsync(Pc1)).IsOnline);
     }

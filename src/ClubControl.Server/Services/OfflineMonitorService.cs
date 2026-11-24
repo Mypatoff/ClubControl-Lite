@@ -79,11 +79,12 @@ public class OfflineMonitorService : BackgroundService
         await CheckAsync(
             scope.ServiceProvider.GetRequiredService<ClubDbContext>(),
             scope.ServiceProvider.GetRequiredService<HeartbeatTracker>(),
+            scope.ServiceProvider.GetRequiredService<ClientUpdateTracker>(),
             DateTime.UtcNow);
     }
 
     /// <summary>One pass: marks every online PC offline whose last heartbeat is too old. Public and static so a test can run it.</summary>
-    public static async Task CheckAsync(ClubDbContext db, HeartbeatTracker heartbeats, DateTime now)
+    public static async Task CheckAsync(ClubDbContext db, HeartbeatTracker heartbeats, ClientUpdateTracker updates, DateTime now)
     {
         var timer = SlowLog.Start("Offline monitor check");
 
@@ -120,6 +121,18 @@ public class OfflineMonitorService : BackgroundService
             // stopped heartbeating (crash, cable pull, hung OS). Evict it now so no command is ever
             // addressed to this dead connection - see ClubHub.ForgetMachine.
             ClubHub.ForgetMachine(pc.MachineGuid);
+        }
+
+        // "Update client" that got no answer in time (no restart, no new version): say so in the log.
+        foreach (var (machineGuid, info) in updates.CheckTimeouts(now))
+        {
+            var pc = await db.Pcs.FirstOrDefaultAsync(p => p.MachineGuid == machineGuid);
+            db.EventLogEntries.Add(new EventLogEntry
+            {
+                Type = EventType.Warning,
+                PcId = pc?.Id,
+                Message = ClientUpdateTracker.LogMessage($"PC #{pc?.Number?.ToString() ?? "?"}", info),
+            });
         }
 
         timer.Step("checks");

@@ -45,7 +45,7 @@ One club, one admin laptop (server), up to ~30 gaming PCs (clients) on the same 
 - Do NOT change Windows policies, registry shell, or Task Manager settings. Ctrl+Alt+Del cannot be blocked and that is accepted.
 
 **Session timer (unlocked):**
-- Small always-on-top movable window in a corner.
+- Small, faint, always-on-top label in the top-right corner. It is click-through and never takes focus, so it cannot get in the way of a game, and it hides itself while a full-screen program is in front.
 - Prepay: counts down remaining time. Postpay: counts up elapsed time and shows current cost.
 - No "Finish" button. Only the admin can end a session.
 - Warnings (popup + sound) at configurable minutes left, default 5 and 1 (prepay only).

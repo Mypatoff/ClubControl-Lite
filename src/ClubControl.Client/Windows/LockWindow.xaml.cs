@@ -49,9 +49,8 @@ public partial class LockWindow : Window
         PcNumberText.Text = info?.PcNumber?.ToString() ?? "";
         PcNumberText.Visibility = info?.PcNumber is null ? Visibility.Collapsed : Visibility.Visible;
 
-        var tariff = info is null ? "" : (info.TariffName ?? "");
-        var price = info is { PricePerHourUzs: > 0 } ? Strings.Format("PerHourFormat", info.PricePerHourUzs.ToString("N0")) : "";
-        PcInfoText.Text = tariff != "" && price != "" ? $"{tariff} — {price}" : tariff + price;
+        // The tariff's name only: the client never shows a price.
+        PcInfoText.Text = info is null ? "" : (info.TariffName ?? "");
 
         MessageText.Text = info?.LimitReached == true ? Strings.Get("PleaseGoToAdmin") : "";
         CustomText.Text = settings.LockScreenText;
